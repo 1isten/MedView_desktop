@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package rpc.main.v1;
+
+import "buf/validate/validate.proto";
+
+message PingRequest {
+  int32 n = 1;
+  optional string msg = 2 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 250
+  ];
+}
+
+message PingResponse {
+  string msg = 1;
+  string timestamp = 2;
+}

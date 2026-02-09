@@ -1,0 +1,22 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+@theme {
+  --font-sans: 'Roboto', sans-serif;
+}
+
+@layer base {
+  /* https://tailwindcss.com/docs/upgrade-guide#buttons-use-the-default-cursor */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    @apply hover:cursor-pointer;
+  }
+}
+
+:root {
+  font-size: 14px;
+  overflow: hidden;
+
+  --ui-header-height: --spacing(14);
+  --ui-radius: calc(0.25rem / 1.5);
+}

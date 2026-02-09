@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package rpc.main.v1;
+
+import "rpc/main/v1/test.proto";
+
+service MainService {
+  rpc Ping(PingRequest) returns (stream PingResponse) {}
+}
