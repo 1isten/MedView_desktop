@@ -355,14 +355,19 @@ const { isMouseInCoverFlow } = storeToRefs(appStore);
 const handleVolViewSlicing = useDebounceFn(function handleVolViewSlicing({ uid, slice }) {
   const _seriesItem = items.value.find(item => item.slot === 'series' && item.id === uid);
   const seriesItem = _seriesItem && findItem(_seriesItem.keys);
-  if (seriesItem) {
-    const instanceItem = Object.values(seriesItem.instances).find(instance => instance.InstanceNumber === slice.n);
-    const _instanceItem = instanceItem && items.value[instanceItem.i];
-    if (_instanceItem) {
-      scrollToItem(_instanceItem.index);
-      handleClickItem(_instanceItem, _instanceItem.index, undefined, true);
-    }
+  if (seriesItem && !seriesItem.expanded) {
+    seriesItem.expanded = true;
   }
+  nextTick(() => {
+    if (seriesItem && seriesItem.expanded) {
+      const instanceItem = Object.values(seriesItem.instances).find(instance => instance.InstanceNumber === slice.n);
+      const _instanceItem = instanceItem && items.value[instanceItem.i];
+      if (_instanceItem) {
+        scrollToItem(_instanceItem.index);
+        handleClickItem(_instanceItem, _instanceItem.index, undefined, true);
+      }
+    }
+  });
 }, 150);
 
 function handleVolViewEvent(e) {
@@ -376,7 +381,9 @@ function handleVolViewEvent(e) {
     const payload = e.data.payload;
     if (payload?.uid) {
       if (volviewLoading.value[payload.uid] === true) {
-        volviewLoading.value[payload.uid] = false;
+        setTimeout(() => {
+          volviewLoading.value[payload.uid] = false;
+        }, 150);
       }
       isMouseInCoverFlow.value = false;
       handleVolViewSlicing(payload);
