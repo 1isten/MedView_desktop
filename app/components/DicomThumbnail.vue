@@ -106,6 +106,7 @@ async function render(type = 'image/webp', quality = 0.1) {
         renderer,
       });
     }
+    canvasElement.remove();
   }
 }
 </script>

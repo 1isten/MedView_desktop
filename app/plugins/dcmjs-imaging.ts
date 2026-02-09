@@ -49,17 +49,53 @@ const WebGLBaseFragmentShader = `
 export default defineNuxtPlugin(async () => {
   const { DicomImage, NativePixelDecoder } = dcmjsImaging;
 
-  let webGpuAdapter: any;
-  let webGpuDevice: any;
-  let webGpuFormat: any;
-
+  let webGPUAdapter: any;
+  let webGPUDevice: any;
+  let webGPUFormat: any;
   if (import.meta.browser) {
     await NativePixelDecoder.initializeAsync();
     if (navigator.gpu) {
-      webGpuAdapter = await navigator.gpu.requestAdapter();
-      webGpuDevice = await webGpuAdapter.requestDevice();
-      webGpuFormat = navigator.gpu.getPreferredCanvasFormat();
+      webGPUAdapter = await navigator.gpu.requestAdapter();
+      webGPUDevice = await webGPUAdapter.requestDevice();
+      webGPUFormat = navigator.gpu.getPreferredCanvasFormat();
     }
+  }
+  let sharedWebGPUCanvas: HTMLCanvasElement | null = null;
+  let sharedWebGPUContext: GPUCanvasContext | null = null;
+  function getSharedWebGPUContext(width: number, height: number) {
+    if (!sharedWebGPUCanvas) {
+      sharedWebGPUCanvas = document.createElement('canvas');
+      sharedWebGPUContext = sharedWebGPUCanvas.getContext('webgpu') as GPUCanvasContext | null;
+    }
+    if (!sharedWebGPUContext) return null;
+    sharedWebGPUCanvas.width = width;
+    sharedWebGPUCanvas.height = height;
+    return { canvas: sharedWebGPUCanvas, gpu: sharedWebGPUContext };
+  }
+  function isWebGPUAvailable() {
+    if (!navigator.gpu) {
+      return false;
+    }
+    if (!webGPUAdapter || !webGPUDevice || !webGPUFormat) {
+      return false;
+    }
+    return getSharedWebGPUContext(1, 1)?.gpu instanceof GPUCanvasContext;
+  }
+
+  let sharedWebGLCanvas: HTMLCanvasElement | null = null;
+  let sharedWebGLContext: WebGLRenderingContext | null = null;
+  function getSharedWebGLContext(width: number, height: number) {
+    if (!sharedWebGLCanvas) {
+      sharedWebGLCanvas = document.createElement('canvas');
+      sharedWebGLContext = sharedWebGLCanvas.getContext('webgl') || sharedWebGLCanvas.getContext('experimental-webgl') as WebGLRenderingContext | null;
+    }
+    if (!sharedWebGLContext) return null;
+    sharedWebGLCanvas.width = width;
+    sharedWebGLCanvas.height = height;
+    return { canvas: sharedWebGLCanvas, gl: sharedWebGLContext };
+  }
+  function isWebGLAvailable() {
+    return getSharedWebGLContext(1, 1)?.gl instanceof WebGLRenderingContext;
   }
 
   return {
@@ -68,31 +104,14 @@ export default defineNuxtPlugin(async () => {
         DicomImage,
         render: async (arrayBuffer: ArrayBuffer, frame = 0) => {
           const image = new DicomImage(arrayBuffer);
-          const canvas = document.createElement('canvas');
+          const outputCanvas = document.createElement('canvas');
 
-          function isWebGLAvailable() {
-            const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-            return gl instanceof WebGLRenderingContext;
-          }
-          function isWebGpuAvailable() {
-            if (!navigator.gpu) {
-              return false;
-            }
-            if (!webGpuAdapter || !webGpuDevice || !webGpuFormat) {
-              return false;
-            }
-            const gpu = canvas.getContext('webgpu');
-            return gpu instanceof GPUCanvasContext;
-          }
+          const renderer =
+            isWebGPUAvailable() ? 'WebGPU' :
+            isWebGLAvailable() ? 'WebGL' :
+            'Canvas';
 
-          let renderer = 'Canvas';
-          if (isWebGLAvailable()) {
-            renderer = 'WebGL';
-          } else if (isWebGpuAvailable()) {
-            renderer = 'WebGPU';
-          }
-
-          function renderFrameWebGPU(renderingResult: ReturnType<typeof image.render>, canvasElement: HTMLCanvasElement) {
+          function renderFrameWebGPU(renderingResult: ReturnType<typeof image.render>, gpu: GPUCanvasContext) {
             const renderedPixels = new Uint8ClampedArray(renderingResult.pixels);
             const imageData = new ImageData(
               renderedPixels,
@@ -100,25 +119,24 @@ export default defineNuxtPlugin(async () => {
               renderingResult.height
             );
 
-            const context = canvasElement.getContext('webgpu')!;
-            context.configure({
-              device: webGpuDevice,
-              format: webGpuFormat,
+            gpu.configure({
+              device: webGPUDevice,
+              format: webGPUFormat,
             });
 
-            const shaderModule = webGpuDevice.createShaderModule({
+            const shaderModule = webGPUDevice.createShaderModule({
               code: WebGPUVertexShaderCode + WebGPUFragmentShaderCode,
             });
-            const bindGroupLayout = webGpuDevice.createBindGroupLayout({
+            const bindGroupLayout = webGPUDevice.createBindGroupLayout({
               entries: [
                 { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
                 { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
               ],
             });
-            const pipelineLayout = webGpuDevice.createPipelineLayout({
+            const pipelineLayout = webGPUDevice.createPipelineLayout({
               bindGroupLayouts: [bindGroupLayout],
             });
-            const pipeline = webGpuDevice.createRenderPipeline({
+            const pipeline = webGPUDevice.createRenderPipeline({
               layout: pipelineLayout,
               vertex: {
                 module: shaderModule,
@@ -138,7 +156,7 @@ export default defineNuxtPlugin(async () => {
                 entryPoint: 'main_f',
                 targets: [
                   {
-                    format: webGpuFormat,
+                    format: webGPUFormat,
                   },
                 ],
               },
@@ -156,13 +174,13 @@ export default defineNuxtPlugin(async () => {
               -1, 1, 0, 1,
               -1, -1, 0, 0
             ]);
-            const vertexBuffer = webGpuDevice.createBuffer({
+            const vertexBuffer = webGPUDevice.createBuffer({
               size: vertexData.byteLength,
               usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
             });
-            webGpuDevice.queue.writeBuffer(vertexBuffer, 0, vertexData);
+            webGPUDevice.queue.writeBuffer(vertexBuffer, 0, vertexData);
 
-            const texture = webGpuDevice.createTexture({
+            const texture = webGPUDevice.createTexture({
               size: [renderingResult.width, renderingResult.height, 1],
               format: 'rgba8unorm',
               usage:
@@ -170,17 +188,17 @@ export default defineNuxtPlugin(async () => {
                 GPUTextureUsage.COPY_DST |
                 GPUTextureUsage.RENDER_ATTACHMENT,
             });
-            webGpuDevice.queue.copyExternalImageToTexture(
+            webGPUDevice.queue.copyExternalImageToTexture(
               { source: imageData, flipY: true },
               { texture },
               { width: renderingResult.width, height: renderingResult.height }
             );
 
-            const sampler = webGpuDevice.createSampler({
+            const sampler = webGPUDevice.createSampler({
               magFilter: 'linear',
               minFilter: 'linear',
             });
-            const bindGroup = webGpuDevice.createBindGroup({
+            const bindGroup = webGPUDevice.createBindGroup({
               layout: bindGroupLayout,
               entries: [
                 { binding: 0, resource: sampler },
@@ -188,7 +206,7 @@ export default defineNuxtPlugin(async () => {
               ],
             });
 
-            const textureView = context.getCurrentTexture().createView();
+            const textureView = gpu.getCurrentTexture().createView();
             const renderPassDescriptor = {
               colorAttachments: [
                 {
@@ -200,7 +218,7 @@ export default defineNuxtPlugin(async () => {
               ],
             };
 
-            const commandEncoder = webGpuDevice.createCommandEncoder();
+            const commandEncoder = webGPUDevice.createCommandEncoder();
             const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
             passEncoder.setPipeline(pipeline);
             passEncoder.setVertexBuffer(0, vertexBuffer);
@@ -208,12 +226,11 @@ export default defineNuxtPlugin(async () => {
             passEncoder.draw(6);
             passEncoder.end();
 
-            webGpuDevice.queue.submit([commandEncoder.finish()]);
+            webGPUDevice.queue.submit([commandEncoder.finish()]);
           }
-          function renderFrameWebGL(renderingResult: ReturnType<typeof image.render>, canvasElement: HTMLCanvasElement) {
+          function renderFrameWebGL(renderingResult: ReturnType<typeof image.render>, gl: WebGLRenderingContext) {
             const renderedPixels = new Uint8Array(renderingResult.pixels);
 
-            const gl = canvasElement.getContext('webgl')!;
             gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
             gl.clearColor(1.0, 1.0, 1.0, 1.0);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -283,12 +300,17 @@ export default defineNuxtPlugin(async () => {
             gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
 
             gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+            // Clean up WebGL resources to avoid memory leaks
+            gl.deleteTexture(texture);
+            gl.deleteBuffer(vertexBuffer);
+            gl.deleteProgram(program);
           }
           function renderFrameCanvas(renderingResult: ReturnType<typeof image.render>, canvasElement: HTMLCanvasElement) {
             const renderedPixels = new Uint8Array(renderingResult.pixels);
 
             const ctx = canvasElement.getContext('2d')!;
-            // ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             const imageData = ctx.createImageData(renderingResult.width, renderingResult.height);
             const canvasPixels = imageData.data;
             for (let i = 0; i < 4 * renderingResult.width * renderingResult.height; i++) {
@@ -299,21 +321,27 @@ export default defineNuxtPlugin(async () => {
 
           try {
             const renderingResult = image.render({ frame });
-            canvas.width = renderingResult.width;
-            canvas.height = renderingResult.height;
+            outputCanvas.width = renderingResult.width;
+            outputCanvas.height = renderingResult.height;
             if (renderer === 'WebGPU') {
-              renderFrameWebGPU(renderingResult, canvas);
+              const { canvas: sharedCanvas, gpu } = getSharedWebGPUContext(renderingResult.width, renderingResult.height)!;
+              renderFrameWebGPU(renderingResult, gpu);
+              const ctx = outputCanvas.getContext('2d')!;
+              ctx.drawImage(sharedCanvas, 0, 0);
             } else if (renderer === 'WebGL') {
-              renderFrameWebGL(renderingResult, canvas);
+              const { canvas: sharedCanvas, gl } = getSharedWebGLContext(renderingResult.width, renderingResult.height)!;
+              renderFrameWebGL(renderingResult, gl);
+              const ctx = outputCanvas.getContext('2d')!;
+              ctx.drawImage(sharedCanvas, 0, 0);
             } else {
-              renderFrameCanvas(renderingResult, canvas);
+              renderFrameCanvas(renderingResult, outputCanvas);
             }
           } catch (error) {
             console.error(error);
             return null;
           }
 
-          return { canvas, renderer };
+          return { canvas: outputCanvas, renderer };
         },
       },
     },
