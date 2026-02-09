@@ -60,6 +60,16 @@ export default defineNuxtPlugin(async () => {
       webGPUFormat = navigator.gpu.getPreferredCanvasFormat();
     }
   }
+  let webGPUShaderModule: GPUShaderModule | null = null;
+  let webGPUBindGroupLayout: GPUBindGroupLayout | null = null;
+  let webGPUPipelineLayout: GPUPipelineLayout | null = null;
+  let webGPUPipeline: GPURenderPipeline | null = null;
+  let webGPUVertexBuffer: GPUBuffer | null = null;
+  let webGPUSampler: GPUSampler | null = null;
+  let webGPUTexture: GPUTexture | null = null;
+  let webGPUBindGroup: GPUBindGroup | null = null;
+  let webGPUTextureSize: { width: number; height: number } | null = null;
+  let webGPUImageData: ImageData | null = null;
   let sharedWebGPUCanvas: HTMLCanvasElement | null = null;
   let sharedWebGPUContext: GPUCanvasContext | null = null;
   function getSharedWebGPUContext(width: number, height: number) {
@@ -82,6 +92,11 @@ export default defineNuxtPlugin(async () => {
     return getSharedWebGPUContext(1, 1)?.gpu instanceof GPUCanvasContext;
   }
 
+  let webGLProgram: WebGLProgram | null = null;
+  let webGLVertexBuffer: WebGLBuffer | null = null;
+  let webGLTexture: WebGLTexture | null = null;
+  let webGLPositionLocation: number | null = null;
+  let webGLTextureSize: { width: number; height: number } | null = null;
   let sharedWebGLCanvas: HTMLCanvasElement | null = null;
   let sharedWebGLContext: WebGLRenderingContext | null = null;
   function getSharedWebGLContext(width: number, height: number) {
@@ -113,98 +128,133 @@ export default defineNuxtPlugin(async () => {
 
           function renderFrameWebGPU(renderingResult: ReturnType<typeof image.render>, gpu: GPUCanvasContext) {
             const renderedPixels = new Uint8ClampedArray(renderingResult.pixels);
-            const imageData = new ImageData(
-              renderedPixels,
-              renderingResult.width,
-              renderingResult.height
-            );
+            if (
+              !webGPUImageData ||
+              webGPUImageData.width !== renderingResult.width ||
+              webGPUImageData.height !== renderingResult.height
+            ) {
+              webGPUImageData = new ImageData(
+                new Uint8ClampedArray(renderedPixels),
+                renderingResult.width,
+                renderingResult.height
+              );
+            } else {
+              webGPUImageData.data.set(renderedPixels);
+            }
 
             gpu.configure({
               device: webGPUDevice,
               format: webGPUFormat,
             });
 
-            const shaderModule = webGPUDevice.createShaderModule({
-              code: WebGPUVertexShaderCode + WebGPUFragmentShaderCode,
-            });
-            const bindGroupLayout = webGPUDevice.createBindGroupLayout({
-              entries: [
-                { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
-                { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
-              ],
-            });
-            const pipelineLayout = webGPUDevice.createPipelineLayout({
-              bindGroupLayouts: [bindGroupLayout],
-            });
-            const pipeline = webGPUDevice.createRenderPipeline({
-              layout: pipelineLayout,
-              vertex: {
-                module: shaderModule,
-                entryPoint: 'main_v',
-                buffers: [
-                  {
-                    arrayStride: 16,
-                    attributes: [
-                      { shaderLocation: 0, offset: 0, format: 'float32x2' },
-                      { shaderLocation: 1, offset: 8, format: 'float32x2' },
-                    ],
-                  },
+            if (!webGPUShaderModule) {
+              webGPUShaderModule = webGPUDevice.createShaderModule({
+                code: WebGPUVertexShaderCode + WebGPUFragmentShaderCode,
+              });
+            }
+            if (!webGPUBindGroupLayout) {
+              webGPUBindGroupLayout = webGPUDevice.createBindGroupLayout({
+                entries: [
+                  { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+                  { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
                 ],
-              },
-              fragment: {
-                module: shaderModule,
-                entryPoint: 'main_f',
-                targets: [
-                  {
-                    format: webGPUFormat,
-                  },
-                ],
-              },
-              primitive: {
-                topology: 'triangle-list',
-              },
-            });
+              });
+            }
+            if (!webGPUPipelineLayout) {
+              webGPUPipelineLayout = webGPUDevice.createPipelineLayout({
+                bindGroupLayouts: [webGPUBindGroupLayout],
+              });
+            }
+            if (!webGPUPipeline) {
+              webGPUPipeline = webGPUDevice.createRenderPipeline({
+                layout: webGPUPipelineLayout,
+                vertex: {
+                  module: webGPUShaderModule,
+                  entryPoint: 'main_v',
+                  buffers: [
+                    {
+                      arrayStride: 16,
+                      attributes: [
+                        { shaderLocation: 0, offset: 0, format: 'float32x2' },
+                        { shaderLocation: 1, offset: 8, format: 'float32x2' },
+                      ],
+                    },
+                  ],
+                },
+                fragment: {
+                  module: webGPUShaderModule,
+                  entryPoint: 'main_f',
+                  targets: [
+                    {
+                      format: webGPUFormat,
+                    },
+                  ],
+                },
+                primitive: {
+                  topology: 'triangle-list',
+                },
+              });
+            }
 
-            // prettier-ignore
-            const vertexData = new Float32Array([
-              -1, -1, 0, 0,
-              1, -1, 1, 0,
-              1, 1, 1, 1,
-              1, 1, 1, 1,
-              -1, 1, 0, 1,
-              -1, -1, 0, 0
-            ]);
-            const vertexBuffer = webGPUDevice.createBuffer({
-              size: vertexData.byteLength,
-              usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-            });
-            webGPUDevice.queue.writeBuffer(vertexBuffer, 0, vertexData);
+            if (!webGPUVertexBuffer) {
+              // prettier-ignore
+              const vertexData = new Float32Array([
+                -1, -1, 0, 0,
+                1, -1, 1, 0,
+                1, 1, 1, 1,
+                1, 1, 1, 1,
+                -1, 1, 0, 1,
+                -1, -1, 0, 0
+              ]);
+              webGPUVertexBuffer = webGPUDevice.createBuffer({
+                size: vertexData.byteLength,
+                usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+              });
+              webGPUDevice.queue.writeBuffer(webGPUVertexBuffer, 0, vertexData);
+            }
 
-            const texture = webGPUDevice.createTexture({
-              size: [renderingResult.width, renderingResult.height, 1],
-              format: 'rgba8unorm',
-              usage:
-                GPUTextureUsage.TEXTURE_BINDING |
-                GPUTextureUsage.COPY_DST |
-                GPUTextureUsage.RENDER_ATTACHMENT,
-            });
+            const sizeChanged =
+              !webGPUTextureSize ||
+              webGPUTextureSize.width !== renderingResult.width ||
+              webGPUTextureSize.height !== renderingResult.height;
+            if (sizeChanged) {
+              webGPUTexture?.destroy();
+              webGPUTexture = webGPUDevice.createTexture({
+                size: [renderingResult.width, renderingResult.height, 1],
+                format: 'rgba8unorm',
+                usage:
+                  GPUTextureUsage.TEXTURE_BINDING |
+                  GPUTextureUsage.COPY_DST |
+                  GPUTextureUsage.RENDER_ATTACHMENT,
+              });
+              webGPUTextureSize = {
+                width: renderingResult.width,
+                height: renderingResult.height,
+              };
+              webGPUBindGroup = null;
+            }
+
             webGPUDevice.queue.copyExternalImageToTexture(
-              { source: imageData, flipY: true },
-              { texture },
+              { source: webGPUImageData!, flipY: true },
+              { texture: webGPUTexture! },
               { width: renderingResult.width, height: renderingResult.height }
             );
 
-            const sampler = webGPUDevice.createSampler({
-              magFilter: 'linear',
-              minFilter: 'linear',
-            });
-            const bindGroup = webGPUDevice.createBindGroup({
-              layout: bindGroupLayout,
-              entries: [
-                { binding: 0, resource: sampler },
-                { binding: 1, resource: texture.createView() },
-              ],
-            });
+            if (!webGPUSampler) {
+              webGPUSampler = webGPUDevice.createSampler({
+                magFilter: 'linear',
+                minFilter: 'linear',
+              });
+            }
+            if (!webGPUBindGroup) {
+              webGPUBindGroup = webGPUDevice.createBindGroup({
+                layout: webGPUBindGroupLayout!,
+                entries: [
+                  { binding: 0, resource: webGPUSampler },
+                  { binding: 1, resource: webGPUTexture!.createView() },
+                ],
+              });
+            }
 
             const textureView = gpu.getCurrentTexture().createView();
             const renderPassDescriptor = {
@@ -220,9 +270,9 @@ export default defineNuxtPlugin(async () => {
 
             const commandEncoder = webGPUDevice.createCommandEncoder();
             const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor);
-            passEncoder.setPipeline(pipeline);
-            passEncoder.setVertexBuffer(0, vertexBuffer);
-            passEncoder.setBindGroup(0, bindGroup);
+            passEncoder.setPipeline(webGPUPipeline!);
+            passEncoder.setVertexBuffer(0, webGPUVertexBuffer!);
+            passEncoder.setBindGroup(0, webGPUBindGroup!);
             passEncoder.draw(6);
             passEncoder.end();
 
@@ -235,64 +285,95 @@ export default defineNuxtPlugin(async () => {
             gl.clearColor(1.0, 1.0, 1.0, 1.0);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-            const vertexShader = gl.createShader(gl.VERTEX_SHADER)!;
-            gl.shaderSource(vertexShader, WebGLBaseVertexShader);
-            gl.compileShader(vertexShader);
-            if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
-              throw new Error('Error compiling vertex shader', gl.getShaderInfoLog(vertexShader));
+            if (!webGLProgram) {
+              const vertexShader = gl.createShader(gl.VERTEX_SHADER)!;
+              gl.shaderSource(vertexShader, WebGLBaseVertexShader);
+              gl.compileShader(vertexShader);
+              if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+                throw new Error('Error compiling vertex shader', gl.getShaderInfoLog(vertexShader));
+              }
+
+              const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)!;
+              gl.shaderSource(fragmentShader, WebGLBaseFragmentShader);
+              gl.compileShader(fragmentShader);
+              if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+                throw new Error('Error compiling fragment shader', gl.getShaderInfoLog(fragmentShader));
+              }
+
+              webGLProgram = gl.createProgram();
+              gl.attachShader(webGLProgram, vertexShader);
+              gl.attachShader(webGLProgram, fragmentShader);
+              gl.linkProgram(webGLProgram);
+              if (!gl.getProgramParameter(webGLProgram, gl.LINK_STATUS)) {
+                throw new Error('Error linking program', gl.getProgramInfoLog(webGLProgram));
+              }
+              gl.validateProgram(webGLProgram);
+              if (!gl.getProgramParameter(webGLProgram, gl.VALIDATE_STATUS)) {
+                throw new Error('Error validating program', gl.getProgramInfoLog(webGLProgram));
+              }
+              gl.deleteShader(vertexShader);
+              gl.deleteShader(fragmentShader);
             }
 
-            const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)!;
-            gl.shaderSource(fragmentShader, WebGLBaseFragmentShader);
-            gl.compileShader(fragmentShader);
-            if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
-              throw new Error('Error compiling fragment shader', gl.getShaderInfoLog(fragmentShader));
+            gl.useProgram(webGLProgram);
+
+            if (!webGLVertexBuffer) {
+              // prettier-ignore
+              const vertices = new Float32Array([
+                -1, -1, 1,
+                -1, -1, 1,
+                1, -1, -1,
+                1, 1, 1
+              ]);
+              webGLVertexBuffer = gl.createBuffer();
+              gl.bindBuffer(gl.ARRAY_BUFFER, webGLVertexBuffer);
+              gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+              webGLPositionLocation = gl.getAttribLocation(webGLProgram, 'position');
+            } else {
+              gl.bindBuffer(gl.ARRAY_BUFFER, webGLVertexBuffer);
             }
 
-            const program = gl.createProgram();
-            gl.attachShader(program, vertexShader);
-            gl.attachShader(program, fragmentShader);
-            gl.linkProgram(program);
-            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-              throw new Error('Error linking program', gl.getProgramInfoLog(program));
+            gl.vertexAttribPointer(webGLPositionLocation!, 2, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(webGLPositionLocation!);
+
+            if (!webGLTexture) {
+              webGLTexture = gl.createTexture();
             }
-            gl.validateProgram(program);
-            if (!gl.getProgramParameter(program, gl.VALIDATE_STATUS)) {
-              throw new Error('Error validating program', gl.getProgramInfoLog(program));
-            }
-            gl.useProgram(program);
-            gl.deleteShader(vertexShader);
-            gl.deleteShader(fragmentShader);
-
-            // prettier-ignore
-            const vertices = new Float32Array([
-              -1, -1, 1,
-              -1, -1, 1,
-              1, -1, -1,
-              1, 1, 1
-            ]);
-            const vertexBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-
-            const positionLocation = gl.getAttribLocation(program, 'position');
-            gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-            gl.enableVertexAttribArray(positionLocation);
-
-            const texture = gl.createTexture();
             gl.activeTexture(gl.TEXTURE0);
-            gl.bindTexture(gl.TEXTURE_2D, texture);
-            gl.texImage2D(
-              gl.TEXTURE_2D,
-              0,
-              gl.RGBA,
-              renderingResult.width,
-              renderingResult.height,
-              0,
-              gl.RGBA,
-              gl.UNSIGNED_BYTE,
-              renderedPixels
-            );
+            gl.bindTexture(gl.TEXTURE_2D, webGLTexture);
+            const glSizeChanged =
+              !webGLTextureSize ||
+              webGLTextureSize.width !== renderingResult.width ||
+              webGLTextureSize.height !== renderingResult.height;
+            if (glSizeChanged) {
+              gl.texImage2D(
+                gl.TEXTURE_2D,
+                0,
+                gl.RGBA,
+                renderingResult.width,
+                renderingResult.height,
+                0,
+                gl.RGBA,
+                gl.UNSIGNED_BYTE,
+                renderedPixels
+              );
+              webGLTextureSize = {
+                width: renderingResult.width,
+                height: renderingResult.height,
+              };
+            } else {
+              gl.texSubImage2D(
+                gl.TEXTURE_2D,
+                0,
+                0,
+                0,
+                renderingResult.width,
+                renderingResult.height,
+                gl.RGBA,
+                gl.UNSIGNED_BYTE,
+                renderedPixels
+              );
+            }
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -300,11 +381,6 @@ export default defineNuxtPlugin(async () => {
             gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
 
             gl.drawArrays(gl.TRIANGLES, 0, 6);
-
-            // Clean up WebGL resources to avoid memory leaks
-            gl.deleteTexture(texture);
-            gl.deleteBuffer(vertexBuffer);
-            gl.deleteProgram(program);
           }
           function renderFrameCanvas(renderingResult: ReturnType<typeof image.render>, canvasElement: HTMLCanvasElement) {
             const renderedPixels = new Uint8Array(renderingResult.pixels);
@@ -312,10 +388,7 @@ export default defineNuxtPlugin(async () => {
             const ctx = canvasElement.getContext('2d')!;
             ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             const imageData = ctx.createImageData(renderingResult.width, renderingResult.height);
-            const canvasPixels = imageData.data;
-            for (let i = 0; i < 4 * renderingResult.width * renderingResult.height; i++) {
-              canvasPixels[i] = renderedPixels[i] as number;
-            }
+            imageData.data.set(renderedPixels);
             ctx.putImageData(imageData, 0, 0);
           }
 
@@ -324,12 +397,20 @@ export default defineNuxtPlugin(async () => {
             outputCanvas.width = renderingResult.width;
             outputCanvas.height = renderingResult.height;
             if (renderer === 'WebGPU') {
-              const { canvas: sharedCanvas, gpu } = getSharedWebGPUContext(renderingResult.width, renderingResult.height)!;
+              const sharedCtx = getSharedWebGPUContext(renderingResult.width, renderingResult.height);
+              if (!sharedCtx) {
+                throw new Error('WebGPU context unavailable');
+              }
+              const { canvas: sharedCanvas, gpu } = sharedCtx;
               renderFrameWebGPU(renderingResult, gpu);
               const ctx = outputCanvas.getContext('2d')!;
               ctx.drawImage(sharedCanvas, 0, 0);
             } else if (renderer === 'WebGL') {
-              const { canvas: sharedCanvas, gl } = getSharedWebGLContext(renderingResult.width, renderingResult.height)!;
+              const sharedCtx = getSharedWebGLContext(renderingResult.width, renderingResult.height);
+              if (!sharedCtx) {
+                throw new Error('WebGL context unavailable');
+              }
+              const { canvas: sharedCanvas, gl } = sharedCtx;
               renderFrameWebGL(renderingResult, gl);
               const ctx = outputCanvas.getContext('2d')!;
               ctx.drawImage(sharedCanvas, 0, 0);
