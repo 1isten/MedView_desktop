@@ -85,7 +85,8 @@ function handleClickThumbnail(item, index) {
 }
 
 const scrollArea = useTemplateRef('scrollArea');
-const scrollToItem = (index, options = { align: 'auto', behavior: 'auto' }) => scrollArea.value?.virtualizer?.scrollToIndex(index, options);
+const isScrolling = computed(() => scrollArea.value?.virtualizer?.isScrolling || false);
+const scrollToItem = (index, options = { align: 'auto', behavior: 'auto' }) => !isScrolling.value && scrollArea.value?.virtualizer?.scrollToIndex(index, options);
 
 const [osInitialize, osInstance] = useOverlayScrollbars({
   options: {

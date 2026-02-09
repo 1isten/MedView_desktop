@@ -204,7 +204,8 @@ function handleKeyPressedItem(e, _item, index) {
 }
 
 const scrollArea = useTemplateRef('scrollArea');
-const scrollToItem = (index, options = { align: 'auto', behavior: 'auto' }) => scrollArea.value?.virtualizer?.scrollToIndex(index, options);
+const isScrolling = computed(() => scrollArea.value?.virtualizer?.isScrolling || false);
+const scrollToItem = (index, options = { align: 'auto', behavior: 'auto' }) => !isScrolling.value && scrollArea.value?.virtualizer?.scrollToIndex(index, options);
 
 const [osInitialize, osInstance] = useOverlayScrollbars({
   options: {
@@ -225,6 +226,18 @@ const [osInitialize, osInstance] = useOverlayScrollbars({
     },
   },
   defer: true,
+});
+
+onActivated(() => {
+  if (osInstance) {
+    const scrollAreaEl = osInstance()?.elements().viewport;
+    if (scrollAreaEl) {
+      scrollAreaEl.scrollTop += 1;
+      requestAnimationFrame(() => {
+        scrollAreaEl.scrollTop -= 1;
+      });
+    }
+  }
 });
 
 onMounted(() => {
