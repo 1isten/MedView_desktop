@@ -423,11 +423,15 @@ function loadSelectionInVolView(selection) {
   };
   if (selection.slot === 'instance') {
     if (selection.isVolume) {
-      payload.urlParams.urls.push(`h3://localhost/file/${encodeURIComponent(selection.filePath)}`);
-      payload.urlParams.names.push(selection.fileName);
       payload.uid = selection.keys[3]; // SOPInstanceUID
       payload.n = selection.InstanceNumber;
+      payload.urlParams.urls.push(`h3://localhost/file/${encodeURIComponent(selection.filePath)}`);
+      payload.urlParams.names.push(selection.fileName);
+      payload.changeLayout = false;
+      payload.changeSlice = false;
     } else {
+      payload.uid = selection.keys[2]; // SeriesInstanceUID
+      payload.n = selection.InstanceNumber;
       const seriesInstances = [];
       Object.values(selection.parentSeries.instances).forEach((instance) => {
         // insert in order by InstanceNumber
@@ -442,8 +446,9 @@ function loadSelectionInVolView(selection) {
         payload.urlParams.urls.push(`h3://localhost/file/${encodeURIComponent(instance.filePath)}`);
         payload.urlParams.names.push(instance.fileName);
       });
-      payload.uid = selection.keys[2]; // SeriesInstanceUID
-      payload.n = selection.InstanceNumber;
+    }
+    if (volviewLoading.value[payload.uid] === false) {
+      payload.changeLayout = false;
     }
   }
   if (payload.uid) {
