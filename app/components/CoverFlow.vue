@@ -1,5 +1,5 @@
 <template>
-  <v-sheet :height="128" color="background-dark" class="flex-none border-t border-default" v-mouse-in-element="onMouseInElement">
+  <v-sheet :height="128" color="background-dark" class="flex-none border-t border-default" :class="selectedDataLoading ? 'cursor-not-allowed' : ''" v-mouse-in-element="onMouseInElement">
     <UScrollArea
       v-slot="{ item, index }"
       :items="thumbnailItems"
@@ -35,6 +35,7 @@
         >
           <DicomThumbnail
             :selected-data-slot="selectedDataSlot"
+            :volview-loading="selectedDataLoading"
             :thumbnail-item="item"
             :thumbnail-index="index"
             :active-thumbnail-index="activeThumbnailIndex"
@@ -70,6 +71,20 @@ const selectedDataSlot = computed(() => {
   return '';
 });
 
+const volviewStore = useVolViewStore();
+const volviewLoading = computed(() => volviewStore.volviewLoading);
+const selectedDataLoading = computed(() => {
+  if (props.selectedDataItem?.slot) {
+    if (props.selectedDataItem.slot === 'instance') {
+      return !!(volviewLoading.value[props.selectedDataItem.id] || volviewLoading.value[props.selectedDataItem.keys[2]]);
+    }
+    if (props.selectedDataItem.slot === 'series') {
+      return !!(volviewLoading.value[props.selectedDataItem.id]);
+    }
+  }
+  return false;
+});
+
 const parsingStore = useParsingStore();
 const { recentClickedThumbnail } = storeToRefs(parsingStore);
 
@@ -86,7 +101,7 @@ function handleClickThumbnail(item, index) {
 
 const scrollArea = useTemplateRef('scrollArea');
 const isScrolling = computed(() => scrollArea.value?.virtualizer?.isScrolling || false);
-const scrollToItem = (index, options = { align: 'auto', behavior: 'auto' }) => !isScrolling.value && scrollArea.value?.virtualizer?.scrollToIndex(index, options);
+const scrollToItem = (index, options = { align: 'auto', behavior: 'auto' }, force = false) => (force || !isScrolling.value) && scrollArea.value?.virtualizer?.scrollToIndex(index, options);
 
 const [osInitialize, osInstance] = useOverlayScrollbars({
   options: {
@@ -210,7 +225,7 @@ watch(() => props.selectedDataItem, (currSelection, prevSelection) => {
               scrollTimer = null;
             }
             scrollTimer = setTimeout(() => {
-              scrollToItem(activeThumbnailIndex.value, { align: 'center' });
+              scrollToItem(activeThumbnailIndex.value, { align: 'center' }, true);
             }, prevSelection ? 100 : 200);
           }
         });

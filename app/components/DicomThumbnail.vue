@@ -3,7 +3,7 @@
     href="#"
     :data-selected="isActive || null"
     class="relative group flex w-[96px] h-[96px] hover:cursor-default transform transform-3d origin-bottom"
-    :class="`${(selectedDataSlot === 'series' || selectedDataSlot === 'instance') ? (isActive ? 'opacity-100' : 'hover:opacity-90 opacity-75 rotate-y-45') : ''}`"
+    :class="`${(selectedDataSlot === 'series' || selectedDataSlot === 'instance') ? (isActive ? 'opacity-100' : 'hover:opacity-90 opacity-75 rotate-y-45') : ''} ${volviewLoading ? 'pointer-events-none' : ''}`"
     @keydown="onkeydown"
     @click.prevent
   >
@@ -12,8 +12,8 @@
       :src="renderedThumbnail.src"
       :width="renderedThumbnail.width"
       :height="renderedThumbnail.height"
-      :class="renderedThumbnail.class"
-      class="transition hover:ring hover:ring-white/5 border group-data-selected:border-white/80! group-data-selected:hover:border-white/90! border-white/10! hover:border-white/20! hover:cursor-pointer pointer-events-auto"
+      :class="`${renderedThumbnail.class} ${volviewLoading ? '' : 'pointer-events-auto hover:cursor-pointer'}`"
+      class="transition hover:ring hover:ring-white/5 border group-data-selected:border-white/80! group-data-selected:hover:border-white/90! border-white/10! hover:border-white/20!"
       @click.prevent.stop="$emit('click:thumbnail')"
     />
   </a>
@@ -24,6 +24,10 @@ const props = defineProps({
   selectedDataSlot: {
     type: String,
     required: true,
+  },
+  volviewLoading: {
+    type: Boolean,
+    default: false,
   },
   thumbnailItem: {
     type: Object,
