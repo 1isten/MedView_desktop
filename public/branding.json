@@ -1,9 +1,9 @@
 {
   "icon": "public/logo/icon",
-  "appName": "DICOM Viewer",
-  "appVersion": "0.0.0",
-  "buildVersion": "0.0.0.1",
+  "appName": "PMTaro Viewer",
+  "appVersion": "1.0.0",
+  "buildVersion": "1.0.0.0",
   "description": "A DICOM viewer based upon VolView.",
-  "contact": "",
-  "copyright": ""
+  "contact": "general_enquiry@illuminatio.io",
+  "copyright": "Copyright (C) 2021 PMT, Ltd. All rights reserved."
 }
