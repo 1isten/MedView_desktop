@@ -350,10 +350,8 @@ watch(recentClickedThumbnail, (thumbnailItem) => {
 const recentVolViewSelection = shallowRef(null);
 
 const volviewStore = useVolViewStore();
-const { volviewMounted } = storeToRefs(volviewStore);
 const volviewRef = computed(() => volviewStore.volviewRef);
-
-const volviewLoading = ref({});
+const { volviewMounted, volviewLoading } = storeToRefs(volviewStore);
 
 onMounted(() => {
   window.addEventListener('message', handleVolViewEvent);
