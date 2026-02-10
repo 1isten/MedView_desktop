@@ -4,5 +4,6 @@
   "appVersion": "1.0.0",
   "buildVersion": "1.0.0.0",
   "description": "A DICOM viewer based upon VolView.",
-  "contact": "general_enquiry@illuminatio.io"
+  "contact": "general_enquiry@illuminatio.io",
+  "copyright": "Copyright (C) 2021 PMT, Ltd. All rights reserved."
 }
