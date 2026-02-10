@@ -7,6 +7,7 @@ import {
   appName,
   appVersion,
   buildVersion,
+  copyright,
 } from './public/branding.json';
 
 import fs from 'node:fs';
@@ -19,6 +20,7 @@ const config: ForgeConfig = {
     name: appName,
     appVersion,
     buildVersion,
+    appCopyright: copyright || undefined,
     protocols: [
       // { name: appName, schemes: [appName.toLowerCase().replaceAll(' ', '-')] },
     ],

@@ -4,5 +4,6 @@
   "appVersion": "0.0.0",
   "buildVersion": "0.0.0.1",
   "description": "A DICOM viewer based upon VolView.",
-  "contact": ""
+  "contact": "",
+  "copyright": ""
 }
