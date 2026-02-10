@@ -59,6 +59,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'update:selected',
+  'userselectfiles',
   // ...
 ]);
 
@@ -386,6 +387,11 @@ function handleVolViewEvent(e) {
     volviewMounted.value = true;
     console.log('[volview]', 'mounted!', volviewRef.value);
     // volviewRef.value.contentWindow.postMessage(..., '*');
+    return;
+  }
+  if (e.data?.type === 'volview:userselectfiles') {
+    const payload = e.data.payload;
+    emit('userselectfiles', payload?.files);
     return;
   }
   if (e.data?.type === 'volview:slicing') {

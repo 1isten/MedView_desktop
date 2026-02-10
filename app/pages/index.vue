@@ -1,5 +1,5 @@
 <template>
-  <v-layout ref="app" full-height @dragover.prevent @drop.prevent="onDrop">
+  <v-layout ref="app" full-height @dragover.prevent="onDragOver" @dragleave="onDragLeave" @drop.prevent="onDrop">
     <ClientOnly>
       <v-navigation-drawer name="drawer" v-model="drawer" :location="drawerLocation" :width="drawerWidth" color="background" :style="isDrawerResizing ? 'transition: none !important;' : ''">
         <v-toolbar flat density="comfortable" class="border-b border-default" color="background">
@@ -41,6 +41,7 @@
             @root:remove="removeRoot($event)"
             @folder:toggle="toggleFolder($event)"
             @folder:refresh="refreshFolder($event)"
+            @userselectfiles="loadUserSelectedFiles"
             style="height: calc(100% - 56px - 1px)"
           />
         </KeepAlive>
@@ -314,9 +315,25 @@ onMounted(async () => {
   }
 });
 
-async function onDrop(e) {
-  if (e.dataTransfer.files.length) {
-    let fullPaths = await Promise.all([...e.dataTransfer.files].map(file => getPathForFile(file)));
+let dragTimeout = null;
+const dragHover = ref(false);
+function onDragOver(e) {
+  dragHover.value = true;
+  if (dragTimeout !== null) {
+    clearTimeout(dragTimeout);
+    dragTimeout = null;
+  }
+}
+function onDragLeave() {
+  dragTimeout = setTimeout(() => {
+    dragHover.value = false;
+    dragTimeout = null;
+  }, 50);
+}
+async function onDrop(e, files) {
+  const items = Array.isArray(files) && files.length > 0 ? files : e?.dataTransfer?.files;
+  if (items?.length) {
+    let fullPaths = await Promise.all([...items].map(file => getPathForFile(file)));
     if (fullPaths?.length > 0) {
       fullPaths = fullPaths.filter(Boolean);
     }
@@ -324,6 +341,13 @@ async function onDrop(e) {
       return addRoots(fullPaths);
     }
   }
+}
+
+function loadUserSelectedFiles(files) {
+  if (files?.length) {
+    return onDrop(null, files);
+  }
+  addRoots();
 }
 
 // --- VolView ---
