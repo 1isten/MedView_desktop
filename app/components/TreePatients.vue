@@ -80,8 +80,8 @@ async function handleClickItem(_item, index, expanded, suppressLoadInVolView = f
     emit('update:selected', { ..._item, ...item });    
   } else {
     const selection = { ..._item, ...item, parentSeries: findItem(_item.keys.slice(0, -1)) };
-    if (volviewMounted.value && !suppressLoadInVolView) {
-      loadSelectionInVolView(selection);
+    if (!suppressLoadInVolView) {
+      pendingLoadSelectionInVolView.value = selection;
     }
     emit('update:selected', selection);
   }
@@ -410,7 +410,22 @@ function handleVolViewEvent(e) {
   // ...
 }
 
+const pendingLoadSelectionInVolView = shallowRef(null);
+watch(pendingLoadSelectionInVolView, () => {
+  if (volviewMounted.value && pendingLoadSelectionInVolView.value) {
+    loadSelectionInVolView(pendingLoadSelectionInVolView.value);
+  }
+}, { immediate: true });
+watch(volviewMounted, () => {
+  if (volviewMounted.value && pendingLoadSelectionInVolView.value) {
+    loadSelectionInVolView(pendingLoadSelectionInVolView.value);
+  }
+}, { immediate: true });
+
 function loadSelectionInVolView(selection) {
+  if (!volviewMounted.value || !selection) {
+    return;
+  }
   if (recentVolViewSelection.value && recentVolViewSelection.value.id === selection.id) {
     return;
   }
@@ -454,6 +469,9 @@ function loadSelectionInVolView(selection) {
     if (volviewLoading.value[payload.uid] === false) {
       payload.changeLayout = false;
     }
+  }
+  if (selection === pendingLoadSelectionInVolView.value) {
+    pendingLoadSelectionInVolView.value = null;
   }
   if (payload.uid) {
     if (volviewLoading.value[payload.uid] === undefined) {
