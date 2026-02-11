@@ -45,6 +45,7 @@ export const useParsingStore = defineStore('parsing', () => {
           patientInfo.studies[study.id].i = study.index;
           list.push(study);
           if (study.expanded) {
+            const studySeries: any[] = [];
             Object.entries(studyInfo.series).forEach(([SeriesInstanceUID, seriesInfo]: [string, any]) => {
               const series = {
                 slot: 'series',
@@ -57,10 +58,20 @@ export const useParsingStore = defineStore('parsing', () => {
                 icon: 'i-lucide-list-tree',
                 expanded: seriesInfo.expanded,
               };
+              // insert in order by SeriesNumber
+              const insertIndex = studySeries.findIndex(s => s.n > series.n);
+              if (insertIndex === -1) {
+                studySeries.push(series);
+              } else {
+                studySeries.splice(insertIndex, 0, series);
+              }
+            });
+            studySeries.forEach((series) => {
               series.index = list.length;
               studyInfo.series[series.id].i = series.index;
               list.push(series);
               if (series.expanded) {
+                const seriesInfo = studyInfo.series[series.id];
                 const seriesInstances: any[] = [];
                 Object.entries(seriesInfo.instances).forEach(([SOPInstanceUID, instanceInfo]: [string, any]) => {
                   const instance = {
