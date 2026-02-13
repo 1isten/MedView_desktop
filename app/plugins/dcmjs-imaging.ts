@@ -56,8 +56,12 @@ export default defineNuxtPlugin(async () => {
     await NativePixelDecoder.initializeAsync();
     if (navigator.gpu) {
       webGPUAdapter = await navigator.gpu.requestAdapter();
-      webGPUDevice = await webGPUAdapter.requestDevice();
-      webGPUFormat = navigator.gpu.getPreferredCanvasFormat();
+      if (webGPUAdapter) {
+        webGPUDevice = await webGPUAdapter.requestDevice();
+        if (webGPUDevice) {
+          webGPUFormat = navigator.gpu.getPreferredCanvasFormat();
+        }
+      }
     }
   }
   let webGPUShaderModule: GPUShaderModule | null = null;
@@ -83,6 +87,9 @@ export default defineNuxtPlugin(async () => {
     return { canvas: sharedWebGPUCanvas, gpu: sharedWebGPUContext };
   }
   function isWebGPUAvailable() {
+    if (typeof GPUCanvasContext === 'undefined') {
+      return false;
+    }
     if (!navigator.gpu) {
       return false;
     }
@@ -98,11 +105,17 @@ export default defineNuxtPlugin(async () => {
   let webGLPositionLocation: number | null = null;
   let webGLTextureSize: { width: number; height: number } | null = null;
   let sharedWebGLCanvas: HTMLCanvasElement | null = null;
-  let sharedWebGLContext: WebGLRenderingContext | null = null;
+  let sharedWebGLContext: WebGLRenderingContext | WebGL2RenderingContext | null = null;
   function getSharedWebGLContext(width: number, height: number) {
     if (!sharedWebGLCanvas) {
       sharedWebGLCanvas = document.createElement('canvas');
-      sharedWebGLContext = sharedWebGLCanvas.getContext('webgl') || sharedWebGLCanvas.getContext('experimental-webgl') as WebGLRenderingContext | null;
+      const gl2 = sharedWebGLCanvas.getContext('webgl2');
+      if (gl2) {
+        sharedWebGLContext = gl2 as WebGL2RenderingContext;
+      } else {
+        sharedWebGLCanvas = document.createElement('canvas');
+        sharedWebGLContext = sharedWebGLCanvas.getContext('webgl') || sharedWebGLCanvas.getContext('experimental-webgl') as WebGLRenderingContext | null;
+      }
     }
     if (!sharedWebGLContext) return null;
     sharedWebGLCanvas.width = width;
@@ -110,7 +123,19 @@ export default defineNuxtPlugin(async () => {
     return { canvas: sharedWebGLCanvas, gl: sharedWebGLContext };
   }
   function isWebGLAvailable() {
-    return getSharedWebGLContext(1, 1)?.gl instanceof WebGLRenderingContext;
+    if (typeof WebGLRenderingContext === 'undefined') {
+      return false;
+    }
+    const gl = getSharedWebGLContext(1, 1)?.gl;
+    if (!gl) {
+      return false;
+    }
+    if (typeof WebGL2RenderingContext !== 'undefined') {
+      if (gl instanceof WebGL2RenderingContext) {
+        return true;
+      }
+    }
+    return gl instanceof WebGLRenderingContext;
   }
 
   return {
@@ -121,7 +146,7 @@ export default defineNuxtPlugin(async () => {
           const image = new DicomImage(arrayBuffer);
           const outputCanvas = document.createElement('canvas');
 
-          const renderer =
+          let renderer =
             isWebGPUAvailable() ? 'WebGPU' :
             isWebGLAvailable() ? 'WebGL' :
             'Canvas';
@@ -278,7 +303,7 @@ export default defineNuxtPlugin(async () => {
 
             webGPUDevice.queue.submit([commandEncoder.finish()]);
           }
-          function renderFrameWebGL(renderingResult: ReturnType<typeof image.render>, gl: WebGLRenderingContext) {
+          function renderFrameWebGL(renderingResult: ReturnType<typeof image.render>, gl: WebGLRenderingContext | WebGL2RenderingContext) {
             const renderedPixels = new Uint8Array(renderingResult.pixels);
 
             gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
@@ -414,6 +439,11 @@ export default defineNuxtPlugin(async () => {
               renderFrameWebGL(renderingResult, gl);
               const ctx = outputCanvas.getContext('2d')!;
               ctx.drawImage(sharedCanvas, 0, 0);
+              if (typeof WebGL2RenderingContext !== 'undefined') {
+                if (gl instanceof WebGL2RenderingContext) {
+                  renderer = 'WebGL2';
+                }
+              }
             } else {
               renderFrameCanvas(renderingResult, outputCanvas);
             }
