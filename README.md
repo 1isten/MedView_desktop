@@ -1,8 +1,8 @@
-# DICOM Viewer
+# PMTaro Viewer
 
 A free, open-source desktop DICOM viewer based upon [VolView](https://github.com/Kitware/VolView) — with local file browsing, DICOM hierarchy management, thumbnail previews, and full offline support.
 
-<!-- ![screenshot](docs/screenshot.png) -->
+![screenshot](public/screenshot.png)
 
 ## Features
 
