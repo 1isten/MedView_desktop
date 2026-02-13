@@ -56,8 +56,12 @@ export default defineNuxtPlugin(async () => {
     await NativePixelDecoder.initializeAsync();
     if (navigator.gpu) {
       webGPUAdapter = await navigator.gpu.requestAdapter();
-      webGPUDevice = await webGPUAdapter.requestDevice();
-      webGPUFormat = navigator.gpu.getPreferredCanvasFormat();
+      if (webGPUAdapter) {
+        webGPUDevice = await webGPUAdapter.requestDevice();
+        if (webGPUDevice) {
+          webGPUFormat = navigator.gpu.getPreferredCanvasFormat();
+        }
+      }
     }
   }
   let webGPUShaderModule: GPUShaderModule | null = null;
@@ -83,6 +87,9 @@ export default defineNuxtPlugin(async () => {
     return { canvas: sharedWebGPUCanvas, gpu: sharedWebGPUContext };
   }
   function isWebGPUAvailable() {
+    if (typeof GPUCanvasContext === 'undefined') {
+      return false;
+    }
     if (!navigator.gpu) {
       return false;
     }
@@ -98,11 +105,17 @@ export default defineNuxtPlugin(async () => {
   let webGLPositionLocation: number | null = null;
   let webGLTextureSize: { width: number; height: number } | null = null;
   let sharedWebGLCanvas: HTMLCanvasElement | null = null;
-  let sharedWebGLContext: WebGLRenderingContext | null = null;
+  let sharedWebGLContext: WebGLRenderingContext | WebGL2RenderingContext | null = null;
   function getSharedWebGLContext(width: number, height: number) {
     if (!sharedWebGLCanvas) {
       sharedWebGLCanvas = document.createElement('canvas');
-      sharedWebGLContext = sharedWebGLCanvas.getContext('webgl') || sharedWebGLCanvas.getContext('experimental-webgl') as WebGLRenderingContext | null;
+      const gl2 = sharedWebGLCanvas.getContext('webgl2');
+      if (gl2) {
+        sharedWebGLContext = gl2 as WebGL2RenderingContext;
+      } else {
+        sharedWebGLCanvas = document.createElement('canvas');
+        sharedWebGLContext = sharedWebGLCanvas.getContext('webgl') || sharedWebGLCanvas.getContext('experimental-webgl') as WebGLRenderingContext | null;
+      }
     }
     if (!sharedWebGLContext) return null;
     sharedWebGLCanvas.width = width;
@@ -110,7 +123,32 @@ export default defineNuxtPlugin(async () => {
     return { canvas: sharedWebGLCanvas, gl: sharedWebGLContext };
   }
   function isWebGLAvailable() {
-    return getSharedWebGLContext(1, 1)?.gl instanceof WebGLRenderingContext;
+    if (typeof WebGLRenderingContext === 'undefined') {
+      return false;
+    }
+    const gl = getSharedWebGLContext(1, 1)?.gl;
+    if (!gl) {
+      return false;
+    }
+    if (typeof WebGL2RenderingContext !== 'undefined') {
+      if (gl instanceof WebGL2RenderingContext) {
+        return true;
+      }
+    }
+    return gl instanceof WebGLRenderingContext;
+  }
+
+  let sharedCanvas2D: HTMLCanvasElement | null = null;
+  let sharedCanvas2DContext: CanvasRenderingContext2D | null = null;
+  function getSharedCanvas2DContext(width: number, height: number) {
+    if (!sharedCanvas2D) {
+      sharedCanvas2D = document.createElement('canvas');
+      sharedCanvas2DContext = sharedCanvas2D.getContext('2d');
+    }
+    if (!sharedCanvas2DContext) return null;
+    sharedCanvas2D.width = width;
+    sharedCanvas2D.height = height;
+    return { canvas: sharedCanvas2D, ctx: sharedCanvas2DContext };
   }
 
   return {
@@ -121,7 +159,7 @@ export default defineNuxtPlugin(async () => {
           const image = new DicomImage(arrayBuffer);
           const outputCanvas = document.createElement('canvas');
 
-          const renderer =
+          let renderer =
             isWebGPUAvailable() ? 'WebGPU' :
             isWebGLAvailable() ? 'WebGL' :
             'Canvas';
@@ -278,7 +316,7 @@ export default defineNuxtPlugin(async () => {
 
             webGPUDevice.queue.submit([commandEncoder.finish()]);
           }
-          function renderFrameWebGL(renderingResult: ReturnType<typeof image.render>, gl: WebGLRenderingContext) {
+          function renderFrameWebGL(renderingResult: ReturnType<typeof image.render>, gl: WebGLRenderingContext | WebGL2RenderingContext) {
             const renderedPixels = new Uint8Array(renderingResult.pixels);
 
             gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
@@ -382,11 +420,10 @@ export default defineNuxtPlugin(async () => {
 
             gl.drawArrays(gl.TRIANGLES, 0, 6);
           }
-          function renderFrameCanvas(renderingResult: ReturnType<typeof image.render>, canvasElement: HTMLCanvasElement) {
+          function renderFrameCanvas(renderingResult: ReturnType<typeof image.render>, ctx: CanvasRenderingContext2D) {
             const renderedPixels = new Uint8Array(renderingResult.pixels);
 
-            const ctx = canvasElement.getContext('2d')!;
-            ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
             const imageData = ctx.createImageData(renderingResult.width, renderingResult.height);
             imageData.data.set(renderedPixels);
             ctx.putImageData(imageData, 0, 0);
@@ -414,8 +451,20 @@ export default defineNuxtPlugin(async () => {
               renderFrameWebGL(renderingResult, gl);
               const ctx = outputCanvas.getContext('2d')!;
               ctx.drawImage(sharedCanvas, 0, 0);
+              if (typeof WebGL2RenderingContext !== 'undefined') {
+                if (gl instanceof WebGL2RenderingContext) {
+                  renderer = 'WebGL2';
+                }
+              }
             } else {
-              renderFrameCanvas(renderingResult, outputCanvas);
+              const sharedCtx = getSharedCanvas2DContext(renderingResult.width, renderingResult.height);
+              if (!sharedCtx) {
+                throw new Error('Canvas 2D context unavailable');
+              }
+              const { canvas: sharedCanvas, ctx: ctx2d } = sharedCtx;
+              renderFrameCanvas(renderingResult, ctx2d);
+              const ctx = outputCanvas.getContext('2d')!;
+              ctx.drawImage(sharedCanvas, 0, 0);
             }
           } catch (error) {
             console.error(error);
