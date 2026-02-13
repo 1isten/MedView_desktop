@@ -46,7 +46,7 @@ Contributions are welcome! Feel free to open issues or submit pull requests.
 
 ## License
 
-[MIT](LICENSE)
+This project is licensed under the [MIT](LICENSE) license. Third-party components are listed in [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES), including VolView under the Apache 2.0 license.
 
 ## Acknowledgments
 
