@@ -26,6 +26,8 @@ const config: ForgeConfig = {
     ],
     asar: true,
     extraResource: [
+      'LICENSE',
+      'THIRD-PARTY-NOTICES',
       'public/volview',
       // ...
     ],
@@ -78,6 +80,24 @@ const config: ForgeConfig = {
       const outputPath = outputPaths[0];
       if (!outputPath) {
         return;
+      }
+      const resourcesDir = path.join(outputPath, `${appName}.app`, 'Contents', 'Resources');
+      if (fs.existsSync(resourcesDir)) {
+        if (platform === 'darwin') {
+          const keepLproj = [
+            'en.lproj',
+            // ...
+          ];
+          for (const entry of fs.readdirSync(resourcesDir)) {
+            if (entry.endsWith('.lproj') && !keepLproj.includes(entry)) {
+              fs.rmSync(path.join(resourcesDir, entry), { recursive: true, force: true });
+            }
+          }
+        }
+        const volviewDir = path.join(resourcesDir, 'volview');
+        if (volviewDir) {
+          fs.copyFileSync('./VolView/LICENSE', path.join(volviewDir, 'LICENSE'));
+        }
       }
       fs.copyFileSync('./electron/package.json', path.join(outputPath, '..', 'package.json'));
     },
