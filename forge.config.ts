@@ -81,7 +81,7 @@ const config: ForgeConfig = {
       if (!outputPath) {
         return;
       }
-      const resourcesDir = path.join(outputPath, `${appName}.app`, 'Contents', 'Resources');
+      const resourcesDir = platform === 'win32' ? path.join(outputPath, 'resources') : path.join(outputPath, `${appName}.app`, 'Contents', 'Resources');
       if (fs.existsSync(resourcesDir)) {
         if (platform === 'darwin') {
           const keepLproj = [
@@ -95,7 +95,7 @@ const config: ForgeConfig = {
           }
         }
         const volviewDir = path.join(resourcesDir, 'volview');
-        if (volviewDir) {
+        if (fs.existsSync(volviewDir)) {
           fs.copyFileSync('./VolView/LICENSE', path.join(volviewDir, 'LICENSE'));
         }
       }
