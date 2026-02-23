@@ -278,16 +278,16 @@ export const useParsingStore = defineStore('parsing', () => {
       if (patientKey) {
         item = parsedData.value.patients[patientKey];
         if (studyKey) {
-          item = item.studies[studyKey];
+          item = item?.studies?.[studyKey];
           if (seriesKey) {
-            item = item.series[seriesKey];
+            item = item?.series?.[seriesKey];
             if (instanceKey) {
-              item = item.instances[instanceKey];
+              item = item?.instances?.[instanceKey];
             }
           }
         }
       }
-      return item;
+      return item ?? null;
     },
 
     recentClickedThumbnail,
