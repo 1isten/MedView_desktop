@@ -27,7 +27,7 @@ router.post('/api/parse', defineEventHandler(async event => {
 
       // ...
 
-      async function handleFile(fileName: string, filePath: string) {
+      async function handleFile(fileName: string, filePath: string, rootPath?: string) {
         if (
           fileName.startsWith('.') ||
           fileName.endsWith('.lnk')
@@ -99,6 +99,7 @@ router.post('/api/parse', defineEventHandler(async event => {
                 controller.enqueue(encode({
                   name: fileName,
                   path: filePath,
+                  root: rootPath,
                   type: 'application/dicom',
                   tags: {
                     TransferSyntaxUID,
@@ -146,7 +147,7 @@ router.post('/api/parse', defineEventHandler(async event => {
           // ...
         }
       }
-      async function handlePaths(fullPaths: string[]) {
+      async function handlePaths(fullPaths: string[], rootPath?: string) {
         for (const fullPath of fullPaths) {
           const access = await pathExists(fullPath);
           if (!access) {
@@ -159,15 +160,15 @@ router.post('/api/parse', defineEventHandler(async event => {
           if (fileStat.isDirectory()) {
             const subPaths = await readdir(fullPath);
             const subFullPaths = subPaths.map(relativePath => join(fullPath, relativePath));
-            await handlePaths(subFullPaths);
+            await handlePaths(subFullPaths, rootPath === '*' ? fullPath : rootPath);
           } else if (fileStat.isFile()) {
             const fileName = basename(fullPath);
             const filePath = normalizePath(fullPath);
-            await handleFile(fileName, filePath);
+            await handleFile(fileName, filePath, rootPath === '*' ? fullPath : rootPath);
           }
         }
       };
-      await handlePaths(rootPaths);
+      await handlePaths(rootPaths, '*');
       controller.close();
     },
   });

@@ -33,7 +33,7 @@ export const useParsingStore = defineStore('parsing', () => {
     let count = 0;
     for await (const chunk of decodeMultiStream(stream) as AsyncIterable<any>) {
       if (chunk?.type === 'application/dicom') {
-        const { name: fileName, path: filePath } = chunk;
+        const { name: fileName, path: filePath, root: rootPath } = chunk;
         const {
           TransferSyntaxUID,
           SOPClassUID,
@@ -61,6 +61,7 @@ export const useParsingStore = defineStore('parsing', () => {
           const PatientDescription = PatientName || PatientID || 'Anonymous';
           if (!parsedData.value.patients[PatientDescription]) {
             parsedData.value.patients[PatientDescription] = {
+              root: rootPath,
               PatientName,
               PatientID,
               studies: {},
