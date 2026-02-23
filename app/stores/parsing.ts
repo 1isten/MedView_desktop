@@ -1,3 +1,5 @@
+import { decodeMultiStream } from '@msgpack/msgpack';
+
 export const useParsingStore = defineStore('parsing', () => {
 
   const parsing = ref(false);
@@ -9,20 +11,180 @@ export const useParsingStore = defineStore('parsing', () => {
     },
   }) as Ref<Record<string, any>>;
 
+  async function parse(rootPaths: string[], deep = true) {
+    if (parsing.value) {
+      return 0;
+    }
+    parsedItemsPathMap.value = {};
+    if (rootPaths.length === 0) {
+      parsedData.value.patients = {};
+      return 0;
+    }
+    console.time('[done parsing]');
+    parsing.value = true;
+    const stream: any = await $fetch('h3://localhost/api/parse', {
+      method: 'POST',
+      body: {
+        rootPaths,
+        deep,
+      },
+      responseType: 'stream',
+    });
+    let count = 0;
+    for await (const chunk of decodeMultiStream(stream) as AsyncIterable<any>) {
+      if (chunk?.type === 'application/dicom') {
+        const { name: fileName, path: filePath } = chunk;
+        const {
+          TransferSyntaxUID,
+          SOPClassUID,
+
+          // ...
+
+          PatientName,
+          PatientID,
+
+          StudyInstanceUID,
+          StudyDescription,
+          StudyID,
+          StudyDate,
+          StudyTime,
+
+          SeriesInstanceUID,
+          SeriesDescription,
+          SeriesNumber,
+
+          SOPInstanceUID,
+          InstanceNumber,
+        } = chunk.tags;
+
+        if (SOPInstanceUID && SeriesInstanceUID && StudyInstanceUID) {
+          const PatientDescription = PatientName || PatientID || 'Anonymous';
+          if (!parsedData.value.patients[PatientDescription]) {
+            parsedData.value.patients[PatientDescription] = {
+              PatientName,
+              PatientID,
+              studies: {},
+            };
+            if (!parsedData.value.patientsInOrder) {
+              parsedData.value.patientsInOrder = [] as any[];
+            }
+            const patientIndex = parsedData.value.patientsInOrder.findIndex((item: any) => {
+              if (item.PatientDescription && PatientDescription) {
+                // return item.PatientDescription.localeCompare(PatientDescription) > 0;
+              }
+              return false;
+            });
+            parsedData.value.patientsInOrder.splice((patientIndex !== -1 ? patientIndex : parsedData.value.patientsInOrder.length), 0, {
+              key: PatientDescription,
+              PatientDescription,
+            });
+          }
+          const patient = parsedData.value.patients[PatientDescription];
+          if (!patient.studies[StudyInstanceUID]) {
+            patient.studies[StudyInstanceUID] = {
+              StudyDescription,
+              StudyID,
+              StudyDate,
+              StudyTime,
+              series: {},
+            };
+            if (!patient.studiesInOrder) {
+              patient.studiesInOrder = [] as any[];
+            }
+            const studyIndex = patient.studiesInOrder.findIndex((item: any) => {
+              if (item.StudyDate && StudyDate) {
+                if (item.StudyTime && StudyTime) {
+                  return Number(`${StudyDate}${StudyTime}`) - Number(`${item.StudyDate}${item.StudyTime}`) > 0;
+                }
+                return Number(StudyDate) - Number(item.StudyDate) > 0;
+              }
+              if (item.StudyDescription && StudyDescription) {
+                return item.StudyDescription.localeCompare(StudyDescription) > 0;
+              }
+              if (item.StudyID && StudyID) {
+                return item.StudyID.localeCompare(StudyID) > 0;
+              }
+              return false;
+            });
+            patient.studiesInOrder.splice((studyIndex !== -1 ? studyIndex : patient.studiesInOrder.length), 0, {
+              key: StudyInstanceUID,
+              StudyDescription,
+              StudyID,
+              StudyDate,
+              StudyTime,
+            });
+          }
+          patient.expanded = false;
+          const study = patient.studies[StudyInstanceUID];
+          if (!study.series[SeriesInstanceUID]) {
+            study.series[SeriesInstanceUID] = {
+              SeriesDescription,
+              SeriesNumber,
+              instances: {},
+            };
+            if (!study.seriesInOrder) {
+              study.seriesInOrder = [] as any[];
+            }
+            const seriesIndex = study.seriesInOrder.findIndex((item: any) => {
+              if (item.SeriesNumber !== undefined && SeriesNumber !== undefined) {
+                return item.SeriesNumber - SeriesNumber > 0;
+              }
+              return false;
+            });
+            study.seriesInOrder.splice((seriesIndex !== -1 ? seriesIndex : study.seriesInOrder.length), 0, {
+              key: SeriesInstanceUID,
+              SeriesNumber,
+            });
+          }
+          study.expanded = false;
+          const series = study.series[SeriesInstanceUID];
+          if (!series.instances[SOPInstanceUID]) {
+            series.instances[SOPInstanceUID] = {
+              InstanceNumber,
+              fileName,
+              filePath,
+              isVolume: !!chunk.isVolume,
+            };
+            if (!series.instancesInOrder) {
+              series.instancesInOrder = [] as any[];
+            }
+            const instanceIndex = series.instancesInOrder.findIndex((item: any) => {
+              if (item.InstanceNumber !== undefined && InstanceNumber !== undefined) {
+                return item.InstanceNumber - InstanceNumber > 0;
+              }
+              return false;
+            });
+            series.instancesInOrder.splice((instanceIndex !== -1 ? instanceIndex : series.instancesInOrder.length), 0, {
+              key: SOPInstanceUID,
+              InstanceNumber,
+            });
+          }
+          series.expanded = false;
+        }
+      }
+      ++count;
+    }
+    console.timeEnd('[done parsing]');
+    parsing.value = false;
+    return count;
+  }
+
   // flattened list
   const parsedItems = computed(() => {
     const list: any[] = [];
     if (parsing.value) {
       return list;
     }
-    Object.entries(parsedData.value.patients).forEach(([patientDescription, patientInfo]: [string, any]) => {
+    parsedData.value.patientsInOrder?.forEach(({ key: patientKey }: any, patientIndex: number) => {
+      const PatientDescription = patientKey as string;
+      const patientInfo = parsedData.value.patients[PatientDescription] as any;
       const patient = {
         slot: 'patient',
         level: 1,
         index: -1,
-        id: patientDescription,
-        keys: [patientDescription],
-        name: patientDescription,
+        id: PatientDescription,
+        keys: [PatientDescription],
+        name: PatientDescription,
         icon: 'i-lucide-user',
         expanded: patientInfo.expanded,
       };
@@ -30,7 +192,9 @@ export const useParsingStore = defineStore('parsing', () => {
       parsedData.value.patients[patient.id].i = patient.index;
       list.push(patient);
       if (patient.expanded) {
-        Object.entries(patientInfo.studies).forEach(([StudyInstanceUID, studyInfo]: [string, any]) => {
+        patientInfo.studiesInOrder?.forEach(({ key: studyKey }: any, studyIndex: number) => {
+          const StudyInstanceUID = studyKey as string;
+          const studyInfo = patientInfo.studies[StudyInstanceUID] as any;
           const study = {
             slot: 'study',
             level: 2,
@@ -45,8 +209,9 @@ export const useParsingStore = defineStore('parsing', () => {
           patientInfo.studies[study.id].i = study.index;
           list.push(study);
           if (study.expanded) {
-            const studySeries: any[] = [];
-            Object.entries(studyInfo.series).forEach(([SeriesInstanceUID, seriesInfo]: [string, any]) => {
+            studyInfo.seriesInOrder?.forEach(({ key: seriesKey }: any, seriesIndex: number) => {
+              const SeriesInstanceUID = seriesKey as string;
+              const seriesInfo = studyInfo.series[SeriesInstanceUID] as any;
               const series = {
                 slot: 'series',
                 level: 3,
@@ -58,22 +223,13 @@ export const useParsingStore = defineStore('parsing', () => {
                 icon: 'i-lucide-list-tree',
                 expanded: seriesInfo.expanded,
               };
-              // insert in order by SeriesNumber
-              const insertIndex = studySeries.findIndex(s => s.n > series.n);
-              if (insertIndex === -1) {
-                studySeries.push(series);
-              } else {
-                studySeries.splice(insertIndex, 0, series);
-              }
-            });
-            studySeries.forEach((series) => {
               series.index = list.length;
               studyInfo.series[series.id].i = series.index;
               list.push(series);
               if (series.expanded) {
-                const seriesInfo = studyInfo.series[series.id];
-                const seriesInstances: any[] = [];
-                Object.entries(seriesInfo.instances).forEach(([SOPInstanceUID, instanceInfo]: [string, any]) => {
+                seriesInfo.instancesInOrder?.forEach(({ key: instanceKey }: any, instanceIndex: number) => {
+                  const SOPInstanceUID = instanceKey as string;
+                  const instanceInfo = seriesInfo.instances[SOPInstanceUID] as any;
                   const instance = {
                     slot: 'instance',
                     level: 4,
@@ -85,15 +241,6 @@ export const useParsingStore = defineStore('parsing', () => {
                     n: instanceInfo.InstanceNumber,
                     icon: 'i-lucide-file-text',
                   };
-                  // insert in order by InstanceNumber
-                  const insertIndex = seriesInstances.findIndex(i => i.n > instance.n);
-                  if (insertIndex === -1) {
-                    seriesInstances.push(instance);
-                  } else {
-                    seriesInstances.splice(insertIndex, 0, instance);
-                  }
-                });
-                seriesInstances.forEach((instance) => {
                   instance.index = list.length;
                   seriesInfo.instances[instance.id].i = instance.index;
                   list.push(instance);
@@ -120,6 +267,7 @@ export const useParsingStore = defineStore('parsing', () => {
   }>>;
 
   return {
+    parse,
     parsing,
     parsedData,
     parsedItems,
@@ -130,16 +278,16 @@ export const useParsingStore = defineStore('parsing', () => {
       if (patientKey) {
         item = parsedData.value.patients[patientKey];
         if (studyKey) {
-          item = item.studies[studyKey];
+          item = item?.studies?.[studyKey];
           if (seriesKey) {
-            item = item.series[seriesKey];
+            item = item?.series?.[seriesKey];
             if (instanceKey) {
-              item = item.instances[instanceKey];
+              item = item?.instances?.[instanceKey];
             }
           }
         }
       }
-      return item;
+      return item ?? null;
     },
 
     recentClickedThumbnail,

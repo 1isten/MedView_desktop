@@ -255,26 +255,26 @@ watch(() => props.selectedDataItem, (currSelection, prevSelection) => {
     switch (currSelection.slot) {
       case 'patient': {
         const patientInfo = currSelection;
-        Object.entries(patientInfo.studies).forEach(([StudyInstanceUID, studyInfo]) => {
+        patientInfo.studiesInOrder?.forEach(({ key: studyKey }, studyIndex) => {
+          const StudyInstanceUID = studyKey;
+          const studyInfo = patientInfo.studies[StudyInstanceUID];
           const seriesThumbnails = [];
-          Object.entries(studyInfo.series).forEach(([SeriesInstanceUID, seriesInfo]) => {
+          studyInfo.seriesInOrder?.forEach(({ key: seriesKey }, seriesIndex) => {
             if (seriesThumbnails.length > 0) {
               return; // pick only first series per study
             }
+            const SeriesInstanceUID = seriesKey;
+            const seriesInfo = studyInfo.series[SeriesInstanceUID];
             const seriesInstances = [];
-            Object.entries(seriesInfo.instances).forEach(([SOPInstanceUID, instanceInfo]) => {
+            seriesInfo.instancesInOrder?.forEach(({ key: instanceKey }, instanceIndex) => {
+              const SOPInstanceUID = instanceKey;
+              const instanceInfo = seriesInfo.instances[SOPInstanceUID];
               const instance = {
                 name: instanceInfo.fileName,
                 path: instanceInfo.filePath,
                 n: instanceInfo.InstanceNumber,
               };
-              // insert in order by InstanceNumber
-              const insertIndex = seriesInstances.findIndex(i => i.n > instance.n);
-              if (insertIndex === -1) {
-                seriesInstances.push(instance);
-              } else {
-                seriesInstances.splice(insertIndex, 0, instance);
-              }
+              seriesInstances.push(instance);
             });
             const middleInstance = seriesInstances[Math.floor(seriesInstances.length / 2)];
             if (middleInstance) {
@@ -293,21 +293,20 @@ watch(() => props.selectedDataItem, (currSelection, prevSelection) => {
       case 'study': {
         const studyInfo = currSelection;
         const seriesThumbnails = [];
-        Object.entries(studyInfo.series).forEach(([SeriesInstanceUID, seriesInfo]) => {
+
+        studyInfo.seriesInOrder?.forEach(({ key: seriesKey }, seriesIndex) => {
+          const SeriesInstanceUID = seriesKey;
+          const seriesInfo = studyInfo.series[SeriesInstanceUID];
           const seriesInstances = [];
-          Object.entries(seriesInfo.instances).forEach(([SOPInstanceUID, instanceInfo]) => {
+          seriesInfo.instancesInOrder?.forEach(({ key: instanceKey }, instanceIndex) => {
+            const SOPInstanceUID = instanceKey;
+            const instanceInfo = seriesInfo.instances[SOPInstanceUID];
             const instance = {
               name: instanceInfo.fileName,
               path: instanceInfo.filePath,
               n: instanceInfo.InstanceNumber,
             };
-            // insert in order by InstanceNumber
-            const insertIndex = seriesInstances.findIndex(i => i.n > instance.n);
-            if (insertIndex === -1) {
-              seriesInstances.push(instance);
-            } else {
-              seriesInstances.splice(insertIndex, 0, instance);
-            }
+            seriesInstances.push(instance);
           });
           const middleInstance = seriesInstances[Math.floor(seriesInstances.length / 2)];
           if (middleInstance) {
@@ -325,7 +324,9 @@ watch(() => props.selectedDataItem, (currSelection, prevSelection) => {
       case 'series': {
         const seriesInfo = currSelection;
         const seriesInstances = [];
-        Object.entries(seriesInfo.instances).forEach(([SOPInstanceUID, instanceInfo]) => {
+        seriesInfo.instancesInOrder?.forEach(({ key: instanceKey }, instanceIndex) => {
+          const SOPInstanceUID = instanceKey;
+          const instanceInfo = seriesInfo.instances[SOPInstanceUID];
           const instance = {
             name: instanceInfo.fileName,
             path: instanceInfo.filePath,
@@ -337,22 +338,17 @@ watch(() => props.selectedDataItem, (currSelection, prevSelection) => {
             name: instanceInfo.fileName,
             file: instance,
           }
-          // insert in order by InstanceNumber
-          const insertIndex = seriesInstances.findIndex(i => i.n > instance.n);
-          if (insertIndex === -1) {
-            seriesInstances.push(instance);
-            thumbnails.push(thumbnail);
-          } else {
-            seriesInstances.splice(insertIndex, 0, instance);
-            thumbnails.splice(insertIndex, 0, thumbnail);
-          }
+          seriesInstances.push(instance);
+          thumbnails.push(thumbnail);
         });
         break;
       }
       case 'instance': {
         const seriesInfo = currSelection.parentSeries;
         const seriesInstances = [];
-        Object.entries(seriesInfo.instances).forEach(([SOPInstanceUID, instanceInfo]) => {
+        seriesInfo.instancesInOrder?.forEach(({ key: instanceKey }, instanceIndex) => {
+          const SOPInstanceUID = instanceKey;
+          const instanceInfo = seriesInfo.instances[SOPInstanceUID];
           const instance = {
             name: instanceInfo.fileName,
             path: instanceInfo.filePath,
@@ -364,15 +360,8 @@ watch(() => props.selectedDataItem, (currSelection, prevSelection) => {
             name: instanceInfo.fileName,
             file: instance,
           }
-          // insert in order by InstanceNumber
-          const insertIndex = seriesInstances.findIndex(i => i.n > instance.n);
-          if (insertIndex === -1) {
-            seriesInstances.push(instance);
-            thumbnails.push(thumbnail);
-          } else {
-            seriesInstances.splice(insertIndex, 0, instance);
-            thumbnails.splice(insertIndex, 0, thumbnail);
-          }
+          seriesInstances.push(instance);
+          thumbnails.push(thumbnail);
         });
         break;
       }
