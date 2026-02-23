@@ -36,7 +36,6 @@
 
 <script setup>
 import { useOverlayScrollbars } from 'overlayscrollbars-vue';
-import { decodeMultiStream } from '@msgpack/msgpack';
 
 const props = defineProps({
   openFrom: {
@@ -204,87 +203,7 @@ onMounted(() => {
 });
 
 async function parse() {
-  if (parsing.value) {
-    return;
-  }
-  parsedItemsPathMap.value = {};
-  if (rootPaths.value.length === 0) {
-    data.value.patients = {};
-    return;
-  }
-  console.time('[done parsing]');
-  parsing.value = true;
-  const stream = await $fetch('h3://localhost/api/parse', {
-    method: 'POST',
-    body: {
-      rootPaths: rootPaths.value,
-      deep: true,
-    },
-    responseType: 'stream',
-  });
-  let count = 0;
-  for await (const chunk of decodeMultiStream(stream)) {
-    if (chunk?.type === 'application/dicom') {
-      const { name: fileName, path: filePath } = chunk;
-      const {
-        PatientName,
-        PatientID,
-
-        StudyInstanceUID,
-        StudyDescription,
-        StudyID,
-
-        SeriesInstanceUID,
-        SeriesDescription,
-        SeriesNumber,
-
-        SOPInstanceUID,
-        InstanceNumber,
-      } = chunk.tags;
-
-      if (SOPInstanceUID && SeriesInstanceUID && StudyInstanceUID) {
-        const patientDescription = PatientName || PatientID || 'Anonymous';
-        if (!data.value.patients[patientDescription]) {
-          data.value.patients[patientDescription] = {
-            PatientName,
-            PatientID,
-            studies: {},
-          };
-        }
-        const patient = data.value.patients[patientDescription];
-        patient.expanded = false;
-        if (!patient.studies[StudyInstanceUID]) {
-          patient.studies[StudyInstanceUID] = {
-            StudyDescription,
-            StudyID,
-            series: {},
-          };
-        }
-        const study = patient.studies[StudyInstanceUID];
-        study.expanded = false;
-        if (!study.series[SeriesInstanceUID]) {
-          study.series[SeriesInstanceUID] = {
-            SeriesDescription,
-            SeriesNumber,
-            instances: {},
-          };
-        }
-        const series = study.series[SeriesInstanceUID];
-        series.expanded = false;
-        if (!series.instances[SOPInstanceUID]) {
-          series.instances[SOPInstanceUID] = {
-            InstanceNumber,
-            fileName,
-            filePath,
-            isVolume: !!chunk.isVolume,
-          };
-        }
-      }
-    }
-    ++count;
-  }
-  console.timeEnd('[done parsing]');
-  parsing.value = false;
+  const count = await parsingStore.parse(rootPaths.value);
   console.log(count, { data, items, pathToKeys: parsedItemsPathMap.value, $scrollToItem: scrollToItem });
   if (openFromPath.value && !openFromHandled.value) {
     nextTick(() => {
@@ -372,7 +291,8 @@ const handleVolViewSlicing = useDebounceFn(function handleVolViewSlicing({ uid, 
   }
   nextTick(() => {
     if (seriesItem && seriesItem.expanded) {
-      const instanceItem = Object.values(seriesItem.instances).find(instance => instance.InstanceNumber === slice.n);
+      const instanceIndex = seriesItem.instancesInOrder?.findIndex(({ InstanceNumber }) => InstanceNumber === slice.n);
+      const instanceItem = instanceIndex !== -1 ? seriesItem.instances[seriesItem.instancesInOrder[instanceIndex].key] : null;
       const _instanceItem = instanceItem && items.value[instanceItem.i];
       if (_instanceItem) {
         scrollToItem(_instanceItem.index);
@@ -451,17 +371,8 @@ function loadSelectionInVolView(selection) {
     } else {
       payload.uid = selection.keys[2]; // SeriesInstanceUID
       payload.n = selection.InstanceNumber;
-      const seriesInstances = [];
-      Object.values(selection.parentSeries.instances).forEach((instance) => {
-        // insert in order by InstanceNumber
-        const insertIndex = seriesInstances.findIndex(i => i.InstanceNumber > instance.InstanceNumber);
-        if (insertIndex === -1) {
-          seriesInstances.push(instance);
-        } else {
-          seriesInstances.splice(insertIndex, 0, instance);
-        }
-      });
-      seriesInstances.forEach(instance => {
+      selection.parentSeries.instancesInOrder?.forEach(({ key: instanceKey }, instanceIndex) => {
+        const instance = selection.parentSeries.instances[instanceKey];
         payload.urlParams.urls.push(`h3://localhost/file/${encodeURIComponent(instance.filePath)}`);
         payload.urlParams.names.push(instance.fileName);
       });

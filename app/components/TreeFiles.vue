@@ -89,9 +89,9 @@ const findItem = (indexes = []) => {
   let item = null;
   for (let i = 0; i < indexes.length; i++) {
     const index = indexes[i];
-    item = i === 0 ? props.roots[index] : item.children[index];
+    item = i === 0 ? props.roots[index] : item?.children?.[index];
   }
-  return item;
+  return item ?? null;
 };
 
 async function handleClickItem(_item, index, expanded) {

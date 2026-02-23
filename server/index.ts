@@ -83,6 +83,8 @@ router.post('/api/parse', defineEventHandler(async event => {
                 let StudyInstanceUID = DicomDict.dict['0020000D']?.Value?.[0];
                 let StudyDescription = DicomDict.dict['00081030']?.Value?.[0];
                 let StudyID = DicomDict.dict['00200010']?.Value?.[0];
+                let StudyDate = DicomDict.dict['00080020']?.Value?.[0];
+                let StudyTime = DicomDict.dict['00080030']?.Value?.[0];
 
                 let SeriesInstanceUID = DicomDict.dict['0020000E']?.Value?.[0];
                 let SeriesDescription = DicomDict.dict['0008103E']?.Value?.[0];
@@ -110,6 +112,8 @@ router.post('/api/parse', defineEventHandler(async event => {
                     StudyInstanceUID,
                     StudyDescription,
                     StudyID,
+                    StudyDate,
+                    StudyTime,
 
                     SeriesInstanceUID,
                     SeriesDescription,
