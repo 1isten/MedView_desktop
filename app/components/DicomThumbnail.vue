@@ -93,20 +93,39 @@ async function render(type = 'image/webp', quality = 0.1) {
   if (props.renderedThumbnails[filePath.value]) {
     return props.renderedThumbnails[filePath.value];
   }
+  const cacheFile = props.thumbnailItem?.file?.cache;
+  if (cacheFile) {
+    const payload = await $fetch(`h3://localhost/file/${encodeURIComponent(cacheFile)}`, { responseType: 'json' }).catch(console.error);
+    if (payload?.thumbnail?.dataURL) {
+      const renderingResult = {
+        ...payload.thumbnail,
+      };
+      emit('rendered', {
+        filePath: filePath.value,
+        renderingResult,
+        renderer: 'cache',
+      });
+      return;
+    }
+  }
   let base64 = '';
-  const arrayBuffer = await $fetch(`h3://localhost/file/${encodeURIComponent(filePath.value)}`, { responseType: 'arrayBuffer' });
+  const arrayBuffer = await $fetch(`h3://localhost/file/${encodeURIComponent(filePath.value)}`, { responseType: 'arrayBuffer' }).catch(console.error);
   const renderingResult = await $dcmjsImaging.render(arrayBuffer);
   if (renderingResult) {
     const { canvas: canvasElement, renderer } = renderingResult;
     base64 = canvasElement.toDataURL(type, quality);
     if (base64) {
+      const renderingResult = {
+        dataURL: base64,
+        width: canvasElement.width,
+        height: canvasElement.height,
+      };
+      if (cacheFile) {
+        await $fetch('h3://localhost/api/cache-thumbnail', { method: 'POST', body: { cacheFile, ...renderingResult } }).catch(console.error);
+      }
       emit('rendered', {
         filePath: filePath.value,
-        renderingResult: {
-          dataURL: base64,
-          width: canvasElement.width,
-          height: canvasElement.height,
-        },
+        renderingResult,
         renderer,
       });
     }
