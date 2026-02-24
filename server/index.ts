@@ -1,6 +1,8 @@
 import { createApp, createRouter, defineEventHandler, serveStatic, getQuery, readBody, setResponseHeader, sendStream, toWebHandler } from 'h3';
-import { stat, readdir, readFile } from 'node:fs/promises';
-import { basename, extname, join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { stat, readdir, readFile, writeFile } from 'node:fs/promises';
+import { statSync, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { dirname, basename, extname, join } from 'node:path';
 import { normalizePath } from './utils/path';
 import { pathExists } from './utils/fs';
 
@@ -19,15 +21,51 @@ router.post('/api/parse', defineEventHandler(async event => {
   setResponseHeader(event, 'Content-Type', 'application/vnd.msgpack');
   setResponseHeader(event, 'Transfer-Encoding', 'chunked');
   setResponseHeader(event, 'Cache-Control', 'no-cache');
+
   const body = await readBody(event);
-  const rootPaths = (body.rootPaths || []) as string[];
+  const rootPaths = ((body.rootPaths || []) as string[]).map((rootPath: string) => {
+    if (rootPath && existsSync(rootPath)) {
+      return normalizePath(rootPath);
+    }
+    return '';
+  }).filter(Boolean);
   const deep = !!body.deep;
+  const refresh = !!body.refresh;
+
   const stream = new ReadableStream({
     async start(controller) {
-
-      // ...
-
-      async function handleFile(fileName: string, filePath: string, rootPath?: string) {
+      await handlePaths(rootPaths, '*');
+      async function handlePaths(fullPaths: string[], rootPath?: string) {
+        for (const fullPath of fullPaths) {
+          const access = await pathExists(fullPath);
+          if (!access) {
+            continue;
+          }
+          const fileStat = await stat(fullPath).catch(() => {});
+          if (!fileStat || fileStat.isSymbolicLink()) {
+            continue;
+          }
+          if (rootPath === '*') {
+            const cacheFolder = join(fileStat.isDirectory() ? fullPath : dirname(fullPath), '.pmtaro', 'cache', 'parsing');
+            if (refresh && cacheFolder && existsSync(cacheFolder)) {
+              rmSync(cacheFolder, { recursive: true, force: true });
+            }
+            if (!existsSync(cacheFolder)) {
+              mkdirSync(cacheFolder, { recursive: true });
+            }
+          }
+          if (fileStat.isDirectory()) {
+            const subPaths = await readdir(fullPath);
+            const subFullPaths = subPaths.map(relativePath => join(fullPath, relativePath));
+            await handlePaths(subFullPaths, rootPath === '*' ? fullPath : rootPath);
+          } else if (fileStat.isFile()) {
+            const fileName = basename(fullPath);
+            const filePath = normalizePath(fullPath);
+            await handleFile(fileName, filePath, fileStat.size, fileStat.mtimeMs, rootPath === '*' ? dirname(fullPath) : rootPath);
+          }
+        }
+      }
+      async function handleFile(fileName: string, filePath: string, fileSize: number, fileMtimeMs: number, rootPath?: string) {
         if (
           fileName.startsWith('.') ||
           fileName.endsWith('.lnk')
@@ -37,6 +75,23 @@ router.post('/api/parse', defineEventHandler(async event => {
         const type = extname(fileName).toLowerCase();
         if (type === '' || type === '.dcm' || type === '.dicom') {
           try {
+            const cacheName = `${filePath.slice((rootPath || '').length)}|${fileSize}|${fileMtimeMs}`;
+            const cacheNameHashed = createHash('md5').update(cacheName).digest('hex') + '.json';
+            const cacheFolder = rootPath ? join(rootPath, '.pmtaro', 'cache', 'parsing') : null;
+
+            // read cache
+            if (cacheFolder && existsSync(cacheFolder)) {
+              const cacheFile = join(cacheFolder, cacheNameHashed);
+              if (existsSync(cacheFile)) {
+                const cacheContent = await readFile(cacheFile, { encoding: 'utf-8' });
+                if (cacheContent) {
+                  const payload = JSON.parse(cacheContent);
+                  controller.enqueue(encode(payload));
+                  return; // hit cache
+                }
+              }
+            }
+
             const buffer = await readFile(filePath);
             const DicomDict = dcmjs.data.DicomMessage.readFile(buffer);
             if (DicomDict) {
@@ -96,7 +151,7 @@ router.post('/api/parse', defineEventHandler(async event => {
                 // may collect more tags
                 // ...
 
-                controller.enqueue(encode({
+                const payload: any = {
                   name: fileName,
                   path: filePath,
                   root: rootPath,
@@ -136,7 +191,16 @@ router.post('/api/parse', defineEventHandler(async event => {
                     '1.2.840.10008.5.1.4.1.1.130', // EnhancedPETImage
                     // ...
                   ].includes(SOPClassUID),
-                }));
+                };
+
+                // write cache
+                if (cacheFolder && existsSync(cacheFolder)) {
+                  const cacheFile = join(cacheFolder, cacheNameHashed);
+                  payload.cacheFile = cacheFile;
+                  await writeFile(cacheFile, JSON.stringify(payload), { encoding: 'utf-8' }).catch(() => {});
+                }
+
+                controller.enqueue(encode(payload));
               }
             }
           } catch (err) {
@@ -147,32 +211,32 @@ router.post('/api/parse', defineEventHandler(async event => {
           // ...
         }
       }
-      async function handlePaths(fullPaths: string[], rootPath?: string) {
-        for (const fullPath of fullPaths) {
-          const access = await pathExists(fullPath);
-          if (!access) {
-            continue;
-          }
-          const fileStat = await stat(fullPath).catch(() => {});
-          if (!fileStat || fileStat.isSymbolicLink()) {
-            continue;
-          }
-          if (fileStat.isDirectory()) {
-            const subPaths = await readdir(fullPath);
-            const subFullPaths = subPaths.map(relativePath => join(fullPath, relativePath));
-            await handlePaths(subFullPaths, rootPath === '*' ? fullPath : rootPath);
-          } else if (fileStat.isFile()) {
-            const fileName = basename(fullPath);
-            const filePath = normalizePath(fullPath);
-            await handleFile(fileName, filePath, rootPath === '*' ? fullPath : rootPath);
-          }
-        }
-      };
-      await handlePaths(rootPaths, '*');
       controller.close();
     },
   });
   return sendStream(event, stream);
+}));
+
+router.post('/api/cache-thumbnail', defineEventHandler(async event => {
+  const body = await readBody(event);
+  const cacheFile = body.cacheFile as string;
+  const dataURL = body.dataURL as string;
+  const width = body.width as number;
+  const height = body.height as number;
+  if (dataURL && width && height && cacheFile && existsSync(cacheFile)) {
+    const cacheContent = await readFile(cacheFile, { encoding: 'utf-8' });
+    if (cacheContent) {
+      const payload = JSON.parse(cacheContent);
+      payload.thumbnail = {
+        dataURL,
+        width,
+        height,
+      };
+      await writeFile(cacheFile, JSON.stringify(payload), { encoding: 'utf-8' }).catch(() => {});
+      return payload;
+    }
+  }
+  return { thumbnail: null };
 }));
 
 router.get('/file/**', defineEventHandler(async event => {

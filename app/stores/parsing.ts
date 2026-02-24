@@ -11,7 +11,7 @@ export const useParsingStore = defineStore('parsing', () => {
     },
   }) as Ref<Record<string, any>>;
 
-  async function parse(rootPaths: string[], deep = true) {
+  async function parse(rootPaths: string[], deep = true, refresh = false) {
     if (parsing.value) {
       return 0;
     }
@@ -27,6 +27,7 @@ export const useParsingStore = defineStore('parsing', () => {
       body: {
         rootPaths,
         deep,
+        refresh,
       },
       responseType: 'stream',
     });
@@ -145,6 +146,7 @@ export const useParsingStore = defineStore('parsing', () => {
               fileName,
               filePath,
               isVolume: !!chunk.isVolume,
+              ...(chunk.cacheFile ? { cacheFile: chunk.cacheFile } : {}),
             };
             if (!series.instancesInOrder) {
               series.instancesInOrder = [] as any[];

@@ -270,9 +270,10 @@ watch(() => props.selectedDataItem, (currSelection, prevSelection) => {
               const SOPInstanceUID = instanceKey;
               const instanceInfo = seriesInfo.instances[SOPInstanceUID];
               const instance = {
+                n: instanceInfo.InstanceNumber,
                 name: instanceInfo.fileName,
                 path: instanceInfo.filePath,
-                n: instanceInfo.InstanceNumber,
+                cache: instanceInfo.cacheFile,
               };
               seriesInstances.push(instance);
             });
@@ -302,9 +303,10 @@ watch(() => props.selectedDataItem, (currSelection, prevSelection) => {
             const SOPInstanceUID = instanceKey;
             const instanceInfo = seriesInfo.instances[SOPInstanceUID];
             const instance = {
+              n: instanceInfo.InstanceNumber,
               name: instanceInfo.fileName,
               path: instanceInfo.filePath,
-              n: instanceInfo.InstanceNumber,
+              cache: instanceInfo.cacheFile,
             };
             seriesInstances.push(instance);
           });
@@ -328,9 +330,10 @@ watch(() => props.selectedDataItem, (currSelection, prevSelection) => {
           const SOPInstanceUID = instanceKey;
           const instanceInfo = seriesInfo.instances[SOPInstanceUID];
           const instance = {
+            n: instanceInfo.InstanceNumber,
             name: instanceInfo.fileName,
             path: instanceInfo.filePath,
-            n: instanceInfo.InstanceNumber,
+            cache: instanceInfo.cacheFile,
           };
           const thumbnail = {
             slot: 'instance',
@@ -350,9 +353,10 @@ watch(() => props.selectedDataItem, (currSelection, prevSelection) => {
           const SOPInstanceUID = instanceKey;
           const instanceInfo = seriesInfo.instances[SOPInstanceUID];
           const instance = {
+            n: instanceInfo.InstanceNumber,
             name: instanceInfo.fileName,
             path: instanceInfo.filePath,
-            n: instanceInfo.InstanceNumber,
+            cache: instanceInfo.cacheFile,
           };
           const thumbnail = {
             slot: 'instance',
