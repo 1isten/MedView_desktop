@@ -202,8 +202,8 @@ onMounted(() => {
   }
 });
 
-async function parse() {
-  const count = await parsingStore.parse(rootPaths.value);
+async function parse({ refresh = false } = {}) {
+  const count = await parsingStore.parse(rootPaths.value, true, !!refresh);
   console.log(count, { data, items, pathToKeys: parsedItemsPathMap.value, $scrollToItem: scrollToItem });
   if (openFromPath.value && !openFromHandled.value) {
     nextTick(() => {
@@ -240,7 +240,7 @@ watch(rootPaths, () => {
   parse();
 }, { immediate: true });
 watch(() => props.refreshedAt, () => {
-  parse();
+  parse({ refresh: true });
 }, { immediate: false });
 
 // --- sync thumbnail click ---

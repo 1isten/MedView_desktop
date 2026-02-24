@@ -11,7 +11,7 @@ export const useParsingStore = defineStore('parsing', () => {
     },
   }) as Ref<Record<string, any>>;
 
-  async function parse(rootPaths: string[], deep = true) {
+  async function parse(rootPaths: string[], deep = true, refresh = false) {
     if (parsing.value) {
       return 0;
     }
@@ -27,13 +27,14 @@ export const useParsingStore = defineStore('parsing', () => {
       body: {
         rootPaths,
         deep,
+        refresh,
       },
       responseType: 'stream',
     });
     let count = 0;
     for await (const chunk of decodeMultiStream(stream) as AsyncIterable<any>) {
       if (chunk?.type === 'application/dicom') {
-        const { name: fileName, path: filePath } = chunk;
+        const { name: fileName, path: filePath, root: rootPath } = chunk;
         const {
           TransferSyntaxUID,
           SOPClassUID,
@@ -61,6 +62,7 @@ export const useParsingStore = defineStore('parsing', () => {
           const PatientDescription = PatientName || PatientID || 'Anonymous';
           if (!parsedData.value.patients[PatientDescription]) {
             parsedData.value.patients[PatientDescription] = {
+              root: rootPath,
               PatientName,
               PatientID,
               studies: {},
@@ -144,6 +146,7 @@ export const useParsingStore = defineStore('parsing', () => {
               fileName,
               filePath,
               isVolume: !!chunk.isVolume,
+              ...(chunk.cacheFile ? { cacheFile: chunk.cacheFile } : {}),
             };
             if (!series.instancesInOrder) {
               series.instancesInOrder = [] as any[];
