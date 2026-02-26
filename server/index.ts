@@ -268,6 +268,22 @@ router.post('/api/cache-thumbnail', defineEventHandler(async event => {
   return { thumbnail: null };
 }));
 
+router.delete('/api/cache-clear', defineEventHandler(async event => {
+  const body = await readBody(event);
+  const rootPaths = (body.rootPaths || []) as string[];
+  return Promise.all(rootPaths.map(async (rootPath: string) => {
+    if (rootPath && existsSync(rootPath)) {
+      const fileStat = await stat(rootPath);
+      const cacheFolder = join(fileStat.isDirectory() ? rootPath : dirname(rootPath), '.pmtaro');
+      if (cacheFolder && existsSync(cacheFolder)) {
+        rmSync(cacheFolder, { recursive: true, force: true });
+        return { root: rootPath, cache: 0 };
+      }
+    }
+    return { root: rootPath, cache: 1 };
+  }));
+}));
+
 router.get('/file/**', defineEventHandler(async event => {
   const path = normalizePath(event.context.params?._ && decodeURIComponent(event.context.params._));
   const name = getQuery(event).filename ? decodeURIComponent(getQuery(event).filename as string) : '';
