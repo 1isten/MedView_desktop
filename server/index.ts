@@ -1,7 +1,7 @@
 import { createApp, createRouter, defineEventHandler, serveStatic, getQuery, readBody, setResponseHeader, sendStream, toWebHandler } from 'h3';
 import { createHash } from 'node:crypto';
+import { createReadStream, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { stat, readdir, readFile, writeFile } from 'node:fs/promises';
-import { statSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, basename, extname, join } from 'node:path';
 import { normalizePath } from './utils/path';
 import { pathExists } from './utils/fs';
@@ -9,6 +9,25 @@ import { pathExists } from './utils/fs';
 // @ts-ignore
 import dcmjs from 'dcmjs';
 import { encode } from '@msgpack/msgpack';
+
+// helper function
+function createLimiter(concurrency: number) {
+  let active = 0;
+  const queue: (() => void)[] = [];
+  return function limit<T>(fn: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const run = () => {
+        active++;
+        fn().then(resolve, reject).finally(() => {
+          active--;
+          if (queue.length) queue.shift()!();
+        });
+      };
+      if (active < concurrency) run();
+      else queue.push(run);
+    });
+  };
+}
 
 const app = createApp({
   debug: false,
@@ -34,16 +53,17 @@ router.post('/api/parse', defineEventHandler(async event => {
 
   const stream = new ReadableStream({
     async start(controller) {
+      const limit = createLimiter(16);
       await handlePaths(rootPaths, '*');
       async function handlePaths(fullPaths: string[], rootPath?: string) {
-        for (const fullPath of fullPaths) {
+        await Promise.all(fullPaths.map(async (fullPath) => {
           const access = await pathExists(fullPath);
           if (!access) {
-            continue;
+            return;
           }
           const fileStat = await stat(fullPath).catch(() => {});
           if (!fileStat || fileStat.isSymbolicLink()) {
-            continue;
+            return;
           }
           if (rootPath === '*') {
             const cacheFolder = join(fileStat.isDirectory() ? fullPath : dirname(fullPath), '.pmtaro', 'cache', 'parsing');
@@ -61,9 +81,9 @@ router.post('/api/parse', defineEventHandler(async event => {
           } else if (fileStat.isFile()) {
             const fileName = basename(fullPath);
             const filePath = normalizePath(fullPath);
-            await handleFile(fileName, filePath, fileStat.size, fileStat.mtimeMs, rootPath === '*' ? dirname(fullPath) : rootPath);
+            await limit(() => handleFile(fileName, filePath, fileStat.size, fileStat.mtimeMs, rootPath === '*' ? dirname(fullPath) : rootPath));
           }
-        }
+        }));
       }
       async function handleFile(fileName: string, filePath: string, fileSize: number, fileMtimeMs: number, rootPath?: string) {
         if (
@@ -92,10 +112,14 @@ router.post('/api/parse', defineEventHandler(async event => {
               }
             }
 
-            const buffer = await readFile(filePath);
-            const DicomDict = dcmjs.data.DicomMessage.readFile(buffer);
-            if (DicomDict) {
-              let PixelData = DicomDict.dict['7FE00010']?.Value;
+            // stream the file through AsyncDicomReader — no full buffer in memory
+            const reader = new dcmjs.async.AsyncDicomReader();
+            reader.stream.fromAsyncStream(createReadStream(filePath));
+            await reader.readFile();
+            const meta = reader.meta;
+            const dict = reader.dict;
+            if (meta && dict) {
+              let PixelData = dict['7FE00010']?.Value;
               if (PixelData) {
                 let length = 0;
                 for (const fragment of PixelData) {
@@ -110,8 +134,8 @@ router.post('/api/parse', defineEventHandler(async event => {
                   PixelData = null;
                 } else {
                   // optional: double check Rows/Columns exist
-                  const Rows = DicomDict.dict['00280010']?.Value?.[0];
-                  const Columns = DicomDict.dict['00280011']?.Value?.[0];
+                  const Rows = dict['00280010']?.Value?.[0];
+                  const Columns = dict['00280011']?.Value?.[0];
                   if (!Rows || !Columns) {
                     PixelData = null;
                   }
@@ -122,31 +146,36 @@ router.post('/api/parse', defineEventHandler(async event => {
               // ...
 
               if (PixelData) {
-                let TransferSyntaxUID = DicomDict.meta['00020010']?.Value?.[0];
-                let SOPClassUID = DicomDict.meta['00020002']?.Value?.[0];
+                let TransferSyntaxUID = meta['00020010']?.Value?.[0];
+                let SOPClassUID = meta['00020002']?.Value?.[0];
 
                 // ...
                 
-                let PatientName = DicomDict.dict['00100010']?.Value;
+                let PatientName = dict['00100010']?.Value;
                 if (PatientName?.__hasValueAccessors) {
                   PatientName = PatientName.toString();
                 } else {
                   PatientName = PatientName?.[0];
                 }
-                let PatientID = DicomDict.dict['00100020']?.Value?.[0];
+                if (PatientName && typeof PatientName === 'object') {
+                  // AsyncDicomReader returns PN as DICOM JSON: { Alphabetic, Ideographic, Phonetic }
+                  PatientName = PatientName.Alphabetic ?? PatientName.Ideographic ?? PatientName.Phonetic ?? '';
+                }
 
-                let StudyInstanceUID = DicomDict.dict['0020000D']?.Value?.[0];
-                let StudyDescription = DicomDict.dict['00081030']?.Value?.[0];
-                let StudyID = DicomDict.dict['00200010']?.Value?.[0];
-                let StudyDate = DicomDict.dict['00080020']?.Value?.[0];
-                let StudyTime = DicomDict.dict['00080030']?.Value?.[0];
+                let PatientID = dict['00100020']?.Value?.[0];
 
-                let SeriesInstanceUID = DicomDict.dict['0020000E']?.Value?.[0];
-                let SeriesDescription = DicomDict.dict['0008103E']?.Value?.[0];
-                let SeriesNumber = DicomDict.dict['00200011']?.Value?.[0];
+                let StudyInstanceUID = dict['0020000D']?.Value?.[0];
+                let StudyDescription = dict['00081030']?.Value?.[0];
+                let StudyID = dict['00200010']?.Value?.[0];
+                let StudyDate = dict['00080020']?.Value?.[0];
+                let StudyTime = dict['00080030']?.Value?.[0];
 
-                let SOPInstanceUID = DicomDict.dict['00080018']?.Value?.[0];
-                let InstanceNumber = DicomDict.dict['00200013']?.Value?.[0];
+                let SeriesInstanceUID = dict['0020000E']?.Value?.[0];
+                let SeriesDescription = dict['0008103E']?.Value?.[0];
+                let SeriesNumber = dict['00200011']?.Value?.[0];
+
+                let SOPInstanceUID = dict['00080018']?.Value?.[0];
+                let InstanceNumber = dict['00200013']?.Value?.[0];
 
                 // may collect more tags
                 // ...
@@ -237,6 +266,22 @@ router.post('/api/cache-thumbnail', defineEventHandler(async event => {
     }
   }
   return { thumbnail: null };
+}));
+
+router.delete('/api/cache-clear', defineEventHandler(async event => {
+  const body = await readBody(event);
+  const rootPaths = (body.rootPaths || []) as string[];
+  return Promise.all(rootPaths.map(async (rootPath: string) => {
+    if (rootPath && existsSync(rootPath)) {
+      const fileStat = await stat(rootPath);
+      const cacheFolder = join(fileStat.isDirectory() ? rootPath : dirname(rootPath), '.pmtaro');
+      if (cacheFolder && existsSync(cacheFolder)) {
+        rmSync(cacheFolder, { recursive: true, force: true });
+        return { root: rootPath, cache: 0 };
+      }
+    }
+    return { root: rootPath, cache: 1 };
+  }));
 }));
 
 router.get('/file/**', defineEventHandler(async event => {

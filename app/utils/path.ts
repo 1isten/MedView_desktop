@@ -1,6 +1,7 @@
 export function normalizePath(path: string) {
   return (path || '').trim().replace(/\\+/g, '/').replace(/\/+/g, '/').replace(/\/$/, '');
 }
+export const basename = (fullPath: string) => normalizePath(fullPath).split('/').pop();
 
 export async function getPathForFile(file: File) {
   if ('$electron' in window) {

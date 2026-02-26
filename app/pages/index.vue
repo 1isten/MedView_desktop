@@ -14,28 +14,28 @@
             <v-btn icon variant="plain">
               <v-icon icon="$dropdown"></v-icon>
               <v-menu activator="parent">
-                <v-list v-if="recentRoots.length > 0" density="compact">
+                <v-list v-if="recentRoots.folders.length === 0 && recentRoots.files.length === 0" density="compact">
+                  <v-list-subheader>{{ 'No Recently Added…' }}</v-list-subheader>
+                </v-list>
+                <v-list v-else density="compact">
                   <v-list-subheader>{{ 'Recently Added' }}</v-list-subheader>
-                  <v-list-item v-for="folder in recentAddedRoots.folders" :key="folder.path" class="min-h-auto!" @click="addRoots([folder.path])">
-                    <v-list-item-title :title="folder.path">
-                      <small>{{ folder.name }}</small>
+                  <v-list-item v-for="folderPath in recentRoots.folders.slice(0, 10)" :key="folderPath" class="min-h-auto!" @click="addRoots([folderPath])">
+                    <v-list-item-title :title="folderPath">
+                      <small>{{ basename(folderPath) }}</small>
                     </v-list-item-title>
                   </v-list-item>
-                  <v-divider v-if="recentAddedRoots.folders.length > 0 && recentAddedRoots.files.length > 0"></v-divider>
-                  <v-list-item v-for="file in recentAddedRoots.files" :key="file.path" class="min-h-auto!" @click="addRoots([file.path])">
-                    <v-list-item-title :title="file.path">
-                      <small>{{ file.name }}</small>
+                  <v-divider v-if="recentRoots.folders.length > 0 && recentRoots.files.length > 0"></v-divider>
+                  <v-list-item v-for="filePath in recentRoots.files.slice(0, 10)" :key="filePath" class="min-h-auto!" @click="addRoots([filePath])">
+                    <v-list-item-title :title="filePath">
+                      <small>{{ basename(filePath) }}</small>
                     </v-list-item-title>
                   </v-list-item>
                   <v-divider></v-divider>
-                  <v-list-item class="group" @click="clearRecentAddedRoots">
+                  <v-list-item class="group" @click="clearRecentAddedRoots(true)">
                     <v-list-item-title class="opacity-70! group-hover:opacity-100! transition-opacity">
                       <span class="text-sm">{{ 'Clear Recently Added…' }}</span>
                     </v-list-item-title>
                   </v-list-item>
-                </v-list>
-                <v-list v-else density="compact">
-                  <v-list-subheader>{{ 'No Recently Added…' }}</v-list-subheader>
                 </v-list>
               </v-menu>
             </v-btn>
@@ -241,26 +241,29 @@ const selectedTreeItem = computed({
   },
 });
 
-const recentRoots = useLocalStorage('recent-roots', []);
-const recentAddedRoots = computed(() => {
-  const folders = [];
-  const files = [];
-  recentRoots.value.forEach((fullPath) => {
-    const basename = normalizePath(fullPath).split('/').pop();
-    if (basename.lastIndexOf('.') > 0) {
-      files.push({ name: basename, path: fullPath });
-    } else {
-      folders.push({ name: basename, path: fullPath });
-    }
-  });
-  return {
-    folders: folders.slice(0, 10),
-    files: files.slice(0, 10),
-  };
-});
-function clearRecentAddedRoots() {
+const initialRoots = { folders: [], files: [] };
+const recentRoots = useLocalStorage('recent-roots', { ...JSON.parse(JSON.stringify(initialRoots)) });
+watch(recentRoots, () => {
+  if (recentRoots.value && Array.isArray(recentRoots.value)) {
+    recentRoots.value = { ...JSON.parse(JSON.stringify(initialRoots)) };
+  }
+}, { immediate: true });
+function clearRecentAddedRoots(clearCache = false) {
+  if (clearCache) {
+    $fetch('h3://localhost/api/cache-clear', {
+      method: 'DELETE',
+      body: {
+        rootPaths: [
+          ...recentRoots.value.folders,
+          ...recentRoots.value.files,
+        ],
+      },
+    }).then(res => {
+      console.log(res);
+    }).catch(console.error);
+  }
   setTimeout(() => {
-    recentRoots.value = [];
+    recentRoots.value = { ...JSON.parse(JSON.stringify(initialRoots)) };
   }, 300);
 }
 
@@ -276,7 +279,9 @@ async function addRoots(fullPaths = []) {
       fullPaths = filePaths;
     }
   }
-  if (fullPaths.length === 0) {
+  if (fullPaths.length > 0) {
+    fullPaths = fullPaths.map((fullPath) => normalizePath(fullPath)).filter(Boolean);
+  } else {
     return;
   }
   const [folders, files] = await $electron.readDirs(fullPaths);
@@ -304,10 +309,14 @@ async function addRoots(fullPaths = []) {
     }
     roots.value.push(item);
   });
-  recentRoots.value = [
-    ...fullPaths,
-    ...recentRoots.value.filter(fullPath => !fullPaths.includes(fullPath)),
-  ].slice(0, 50);
+  recentRoots.value.folders = [
+    ...folders.map(({ path }) => normalizePath(path)),
+    ...recentRoots.value.folders.filter(fullPath => !fullPaths.includes(fullPath)),
+  ];
+  recentRoots.value.files = [
+    ...files.map(({ path }) => normalizePath(path)),
+    ...recentRoots.value.files.filter(fullPath => !fullPaths.includes(fullPath)),
+  ];
 }
 function removeRoot(rootItem) {
   const rootIndex = roots.value.findIndex(item => item.path === rootItem.path);
