@@ -236,7 +236,10 @@ async function parse({ refresh = false } = {}) {
     openFromHandled.value = true;
   }
 }
-watch(rootPaths, () => {
+watch(rootPaths, (currRoots, prevRoots) => {
+  if (!currRoots.length || currRoots.length < prevRoots.length) {
+    return;
+  }
   parse();
 }, { immediate: true });
 watch(() => props.refreshedAt, () => {
