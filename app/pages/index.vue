@@ -276,7 +276,9 @@ async function addRoots(fullPaths = []) {
       fullPaths = filePaths;
     }
   }
-  if (fullPaths.length === 0) {
+  if (fullPaths.length > 0) {
+    fullPaths = fullPaths.map((fullPath) => normalizePath(fullPath)).filter(Boolean);
+  } else {
     return;
   }
   const [folders, files] = await $electron.readDirs(fullPaths);
