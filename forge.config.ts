@@ -27,6 +27,24 @@ const config: ForgeConfig = {
     appVersion,
     buildVersion,
     appCopyright: copyright || undefined,
+    extendInfo: {
+      CFBundleDocumentTypes: [
+        {
+          CFBundleTypeName: 'DICOM File',
+          CFBundleTypeRole: 'Viewer',
+          LSHandlerRank: 'Owner',
+          CFBundleTypeExtensions: ['dcm'],
+          CFBundleTypeMIMETypes: ['application/dicom'],
+          LSItemContentTypes: ['org.nema.dicom'],
+        },
+        {
+          CFBundleTypeName: 'Folder',
+          CFBundleTypeRole: 'Viewer',
+          LSHandlerRank: 'Owner',
+          LSItemContentTypes: ['public.folder'],
+        },
+      ],
+    },
     protocols: [
       // { name: appName, schemes: [appName.toLowerCase().replaceAll(' ', '-')] },
     ],
