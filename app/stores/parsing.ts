@@ -16,8 +16,20 @@ export const useParsingStore = defineStore('parsing', () => {
       return 0;
     }
     parsedItemsPathMap.value = {};
-    if (rootPaths.length === 0) {
+    if (rootPaths.length > 0) {
+      Object.keys(parsedData.value.patients).forEach((patientKey) => {
+        const patientItem = parsedData.value.patients[patientKey];
+        if (!rootPaths.includes(patientItem.root)) {
+          delete parsedData.value.patients[patientKey];
+          const patientIndex = parsedData.value.patientsInOrder?.findIndex((item: any) => item.key === patientKey) ?? -1;
+          if (patientIndex !== -1) {
+            parsedData.value.patientsInOrder?.splice(patientIndex, 1);
+          }
+        }
+      });
+    } else {
       parsedData.value.patients = {};
+      parsedData.value.patientsInOrder = [];
       return 0;
     }
     console.time('[done parsing]');
@@ -181,6 +193,9 @@ export const useParsingStore = defineStore('parsing', () => {
     parsedData.value.patientsInOrder?.forEach(({ key: patientKey }: any, patientIndex: number) => {
       const PatientDescription = patientKey as string;
       const patientInfo = parsedData.value.patients[PatientDescription] as any;
+      if (!patientInfo) {
+        return;
+      }
       const patient = {
         slot: 'patient',
         level: 1,

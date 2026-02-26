@@ -31,7 +31,7 @@
                     </v-list-item-title>
                   </v-list-item>
                   <v-divider></v-divider>
-                  <v-list-item class="group" @click="clearRecentAddedRoots(true)">
+                  <v-list-item class="group" @click="clearRecentAddedRoots()">
                     <v-list-item-title class="opacity-70! group-hover:opacity-100! transition-opacity">
                       <span class="text-sm">{{ 'Clear Recently Added…' }}</span>
                     </v-list-item-title>
@@ -46,13 +46,13 @@
               <v-icon :icon="showFileExplorer ? 'mdi-file-tree' : 'mdi-database-outline'"></v-icon>
               <v-menu activator="parent">
                 <v-list density="compact">
-                  <v-list-item :active="!showFileExplorer" @click="showFileExplorer = false">
+                  <v-list-item :active="!showFileExplorer" @click="toggleShowFileExplorer(false)">
                     <template v-slot:prepend>
                       <v-icon icon="mdi-database-outline" class="me-n5"></v-icon>
                     </template>
                     <v-list-item-title>{{ 'Patients' }}</v-list-item-title>
                   </v-list-item>
-                  <v-list-item :active="showFileExplorer" @click="showFileExplorer = true">
+                  <v-list-item :active="showFileExplorer" @click="toggleShowFileExplorer(true)">
                     <template v-slot:prepend>
                       <v-icon icon="mdi-file-tree" class="me-n5"></v-icon>
                     </template>
@@ -221,6 +221,10 @@ function resetDrawerWidth() {
 const showCoverFlow = ref(true);
 
 const showFileExplorer = ref(false);
+const toggleShowFileExplorer = val => {
+  showFileExplorer.value = typeof val === 'boolean' ? val : !showFileExplorer.value;
+  // selectedTreeItem.value = null;
+};
 const activeTreeComponent = computed(() => showFileExplorer.value ? TreeFiles : TreePatients);
 
 const roots = ref([]);
@@ -250,21 +254,23 @@ watch(recentRoots, () => {
 }, { immediate: true });
 function clearRecentAddedRoots(clearCache = false) {
   if (clearCache) {
-    $fetch('h3://localhost/api/cache-clear', {
-      method: 'DELETE',
-      body: {
-        rootPaths: [
-          ...recentRoots.value.folders,
-          ...recentRoots.value.files,
-        ],
-      },
-    }).then(res => {
-      console.log(res);
-    }).catch(console.error);
+    clearRootCache([
+      ...recentRoots.value.folders,
+      ...recentRoots.value.files,
+    ]);
   }
   setTimeout(() => {
     recentRoots.value = { ...JSON.parse(JSON.stringify(initialRoots)) };
   }, 300);
+}
+
+function clearRootCache(rootPaths = []) {
+  return $fetch('h3://localhost/api/cache-clear', {
+    method: 'DELETE',
+    body: { rootPaths },
+  }).then(res => {
+    console.log(res);
+  }).catch(console.error);
 }
 
 async function addRoots(fullPaths = []) {
@@ -319,6 +325,10 @@ async function addRoots(fullPaths = []) {
   ];
 }
 function removeRoot(rootItem) {
+  if (rootItem.rootItem && rootItem.clearCache) {
+    rootItem = rootItem.rootItem;
+    clearRootCache([rootItem.path]);
+  }
   const rootIndex = roots.value.findIndex(item => item.path === rootItem.path);
   if (rootIndex !== -1) {
     roots.value.splice(rootIndex, 1);
