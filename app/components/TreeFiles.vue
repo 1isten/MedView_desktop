@@ -113,16 +113,16 @@ function handleDoubleClickItem(_item, index) {
 
 const rightClickContext = shallowRef(null);
 const { onContextMenu } = useContextMenu('file-explorer-item', computed(() => [
-  rightClickContext.value?.level === 1 && {
-    label: 'Remove',
-    click: () => {
-      emit('root:remove', findItem(rightClickContext.value.indexes));
-    },
-  },
   rightClickContext.value?.isDirectory && {
     label: 'Refresh',
     click: () => {
       emit('folder:refresh', findItem(rightClickContext.value.indexes));
+    },
+  },
+  rightClickContext.value?.level === 1 && {
+    label: 'Remove',
+    click: () => {
+      emit('root:remove', findItem(rightClickContext.value.indexes));
     },
   },
   rightClickContext.value?.path && {
