@@ -107,8 +107,9 @@ if (app.isPackaged) {
 
 const openFromPaths: string[] = [];
 
-if (process.argv.length >= 2) {
-  const lastArg = process.argv[process.argv.length - 1];
+const commandLine = process.argv;
+if (commandLine.length >= 2) {
+  const lastArg = commandLine[commandLine.length - 1];
   if (!lastArg.startsWith('.') && fs.existsSync(lastArg)) {
     const stat = fs.lstatSync(lastArg);
     if (stat.isFile() || stat.isDirectory()) {
@@ -117,10 +118,46 @@ if (process.argv.length >= 2) {
   }
 }
 
+const additionalData = {
+  // ...
+};
+const gotTheLock = app.requestSingleInstanceLock(additionalData);
+if (!gotTheLock) {
+  app.quit();
+} else {
+  // win
+  app.on('second-instance', (e, commandLine, workingDirectory, additionalData) => {
+    if (commandLine.length >= 2) {
+      const lastArg = commandLine[commandLine.length - 1];
+      if (!lastArg.startsWith('.') && fs.existsSync(lastArg)) {
+        const stat = fs.lstatSync(lastArg);
+        if (stat.isFile() || stat.isDirectory()) {
+          openFromPaths.push(normalizePath(lastArg));
+        }
+      }
+    }
+    createWindow(openFromPaths.pop());
+  });
+
+  // mac
+  app.on('open-file', (e, path) => {
+    e.preventDefault();
+    handleOpenFromPath(path);
+  });
+  app.on('open-url', (e, url) => {
+    e.preventDefault();
+    // ...
+  });
+}
+
 const APP_URL = path.join(app.getAppPath(), '.output', 'public', 'index.html');
 const VOLVIEW_URL = path.join(app.getAppPath(), '..', 'volview', 'index.html');
 
 const createWindow = (openFromPath?: string) => {
+  if (!gotTheLock) {
+    return;
+  }
+
   const win = new BrowserWindow({
     darkTheme: true,
     backgroundColor: '#000000',
@@ -162,12 +199,10 @@ function handleOpenFromPath(openFromPath: string) {
   }
 }
 
-app.on('open-file', (e, path) => {
-  e.preventDefault();
-  handleOpenFromPath(path);
-});
-
 app.whenReady().then(() => {
+  if (!gotTheLock) {
+    return;
+  }
 
   // protocol.handle('connect', connectrpcHandler);
   protocol.handle('h3', req => handler(req));
@@ -235,7 +270,9 @@ app.whenReady().then(() => {
   createWindow(openFromPaths.pop());
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (app.hasSingleInstanceLock()) {
+      createWindow(openFromPaths.pop());
+    } else if (BrowserWindow.getAllWindows().length === 0) {
       createWindow(openFromPaths.pop());
     }
   });
