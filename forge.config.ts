@@ -11,7 +11,11 @@ import {
 } from './public/branding.json';
 
 import fs from 'node:fs';
+import url from 'node:url';
 import path from 'node:path';
+
+const __filename = import.meta.filename || url.fileURLToPath(import.meta.url);
+const __dirname = import.meta.dirname || path.dirname(__filename);
 
 const iconPath = icon ? path.dirname(path.join(__dirname, icon)) : '';
 const config: ForgeConfig = {
@@ -56,7 +60,6 @@ const config: ForgeConfig = {
       // '^/README.md',
       // ...
       '^/electron/.*\.ts$',
-      '^/electron/package.json',
       '^/node_modules/.cache',
       // ...
     ],
@@ -72,7 +75,7 @@ const config: ForgeConfig = {
       fs.writeFileSync(path.resolve(buildPath, 'package.json'), JSON.stringify({
         name: appName,
         version: buildVersion,
-        type: 'commonjs',
+        type: pkg.type,
         main: pkg.main,
       }));
     },
@@ -99,7 +102,6 @@ const config: ForgeConfig = {
           fs.copyFileSync('./VolView/LICENSE', path.join(volviewDir, 'LICENSE'));
         }
       }
-      fs.copyFileSync('./electron/package.json', path.join(outputPath, '..', 'package.json'));
     },
   },
 };

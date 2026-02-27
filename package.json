@@ -17,7 +17,7 @@
     "build:volview": "cd VolView && npm ci && npm run build && cd .. && shx rm -rf public/volview && shx mv VolView/dist public/volview",
     "generate": "nuxt generate",
     "generate:proto": "buf generate",
-    "generate:electron": "esbuild electron/*.ts --format=cjs --platform=node --minify --bundle --packages=external --outdir=electron --allow-overwrite",
+    "generate:electron": "jiti electron/build.ts",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare"
   },
