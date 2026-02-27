@@ -57,7 +57,7 @@ router.post('/api/parse', defineEventHandler(async event => {
         const limit = createLimiter(16);
         await handlePaths(rootPaths, '*');
         async function handlePaths(fullPaths: string[], rootPath?: string) {
-          await Promise.all(fullPaths.map(async (fullPath) => {
+          await Promise.all(fullPaths.map(fullPath => limit(async () => {
             const access = await pathExists(fullPath);
             if (!access) {
               return;
@@ -82,9 +82,9 @@ router.post('/api/parse', defineEventHandler(async event => {
             } else if (fileStat.isFile()) {
               const fileName = basename(fullPath);
               const filePath = normalizePath(fullPath);
-              await limit(() => handleFile(fileName, filePath, fileStat.size, fileStat.mtimeMs, rootPath === '*' ? dirname(fullPath) : rootPath));
+              await handleFile(fileName, filePath, fileStat.size, fileStat.mtimeMs, rootPath === '*' ? dirname(fullPath) : rootPath);
             }
-          }));
+          })));
         }
         async function handleFile(fileName: string, filePath: string, fileSize: number, fileMtimeMs: number, rootPath?: string) {
           if (
@@ -101,15 +101,13 @@ router.post('/api/parse', defineEventHandler(async event => {
               const cacheFolder = rootPath ? join(rootPath, '.pmtaro', 'cache', 'parsing') : null;
 
               // read cache
-              if (cacheFolder && existsSync(cacheFolder)) {
+              if (cacheFolder) {
                 const cacheFile = join(cacheFolder, cacheNameHashed);
-                if (existsSync(cacheFile)) {
-                  const cacheContent = await readFile(cacheFile, { encoding: 'utf-8' });
-                  if (cacheContent) {
-                    const payload = JSON.parse(cacheContent);
-                    controller.enqueue(encode(payload));
-                    return; // hit cache
-                  }
+                const cacheContent = await readFile(cacheFile, { encoding: 'utf-8' }).catch(() => {});
+                if (cacheContent) {
+                  const payload = JSON.parse(cacheContent);
+                  controller.enqueue(encode(payload));
+                  return; // hit cache
                 }
               }
 
@@ -224,7 +222,7 @@ router.post('/api/parse', defineEventHandler(async event => {
                   };
 
                   // write cache
-                  if (cacheFolder && existsSync(cacheFolder)) {
+                  if (cacheFolder) {
                     const cacheFile = join(cacheFolder, cacheNameHashed);
                     payload.cacheFile = cacheFile;
                     await writeFile(cacheFile, JSON.stringify(payload), { encoding: 'utf-8' }).catch(() => {});
