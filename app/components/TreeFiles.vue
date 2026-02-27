@@ -19,6 +19,9 @@
         :class="item.path === selectedItem ? 'text-white bg-elevated! hover:bg-accented/50!' : 'hover:bg-elevated/30!'"
         :style="{ height: '32px', paddingStart: `${16 * item.level}px` }"
         :data-expanded="item.expanded ? true : null"
+        :draggable="'true'"
+        @dragstart="onDragStart($event, item, index)"
+        @dragend="onDragEnd($event)"
         @keydown="handleKeyPressedItem($event, item, index)"
         @click.prevent="handleClickItem(item, index)"
         @dblclick.prevent="handleDoubleClickItem(item, index)"
@@ -122,7 +125,8 @@ const { onContextMenu } = useContextMenu('file-explorer-item', computed(() => [
   rightClickContext.value?.level === 1 && {
     label: 'Remove',
     click: () => {
-      emit('root:remove', { rootItem: findItem(rightClickContext.value.indexes), clearCache: true });
+      // emit('root:remove', { rootItem: findItem(rightClickContext.value.indexes), clearCache: true });
+      emit('root:remove', findItem(rightClickContext.value.indexes));
     },
   },
   rightClickContext.value?.path && {
@@ -201,6 +205,20 @@ function handleKeyPressedItem(e, _item, index) {
   ].includes(e.key)) {
     e.preventDefault();
   }
+}
+
+function onDragStart(e, _item) {
+  const item = findItem(_item.indexes);
+  if (item) {
+    const selection = { name: _item.name, path: _item.path, isDirectory: _item.isDirectory, ...item };
+    e.dataTransfer.setData('text', JSON.stringify({ from: 'root', selection }));
+    e.effectAllowed = 'copy';
+  } else {
+    e.preventDefault();
+  }
+}
+function onDragEnd(e) {
+  // ...
 }
 
 const scrollArea = useTemplateRef('scrollArea');

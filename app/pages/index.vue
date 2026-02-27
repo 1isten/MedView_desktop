@@ -418,9 +418,14 @@ async function onDrop(e, files) {
       fullPaths = fullPaths.filter(Boolean);
     }
     if (fullPaths?.length > 0) {
-      return addRoots(fullPaths);
+      addRoots(fullPaths);
     }
+    return;
   }
+  try {
+    const payload = JSON.parse(e.dataTransfer.getData('text') || 'null');
+    console.log('drop:', payload);
+  } catch (err) {}
 }
 
 function loadUserSelectedFiles(files) {

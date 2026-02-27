@@ -20,6 +20,9 @@
         :style="{ height: '32px', paddingStart: `${16 * item.level}px` }"
         :data-expanded="item.expanded ? true : null"
         :disabled="item.slot === 'instance' ? (!!volviewLoading[item.id] || !!volviewLoading[item.keys[2]]) : item.slot === 'series' ? !!volviewLoading[item.id] : false"
+        :draggable="'true'"
+        @dragstart="onDragStart($event, item, index)"
+        @dragend="onDragEnd($event)"
         @keydown="handleKeyPressedItem($event, item, index)"
         @click.prevent="handleClickItem(item, index)"
         @contextmenu.prevent="handleRightClickItem($event, item)"
@@ -74,16 +77,16 @@ const findItem = parsingStore.findItem;
 
 async function handleClickItem(_item, index, expanded, suppressLoadInVolView = false) {
   const item = findItem(_item.keys);
-  if (_item.slot !== 'instance') {
-    item.expanded = typeof expanded === 'boolean' ? expanded : !item.expanded;
-    emit('update:selected', { ..._item, ...item });    
-  } else {
-    const selection = { ..._item, ...item, parentSeries: findItem(_item.keys.slice(0, -1)) };
+  const selection = { ..._item, ...item };
+  if (_item.slot === 'instance') {
+    selection.parentSeries = findItem(_item.keys.slice(0, -1));
     if (!suppressLoadInVolView) {
       pendingLoadSelectionInVolView.value = selection;
-    }
-    emit('update:selected', selection);
+    }    
+  } else {
+    item.expanded = typeof expanded === 'boolean' ? expanded : !item.expanded;
   }
+  emit('update:selected', selection);
 }
 
 const rightClickContext = shallowRef(null);
@@ -101,12 +104,11 @@ const { onContextMenu } = useContextMenu('parsed-tree-item', computed(() => [
 ]));
 async function handleRightClickItem(e, _item) {
   const item = findItem(_item.keys);
-  if (_item.slot !== 'instance') {
-    emit('update:selected', { ..._item, ...item });    
-  } else {
-    const selection = { ..._item, ...item, parentSeries: findItem(_item.keys.slice(0, -1)) };
-    emit('update:selected', selection);
+  const selection = { ..._item, ...item };
+  if (_item.slot === 'instance') {
+    selection.parentSeries = findItem(_item.keys.slice(0, -1));
   }
+  emit('update:selected', selection);
   rightClickContext.value = _item;
   return onContextMenu(e);
 }
@@ -145,6 +147,22 @@ function handleKeyPressedItem(e, _item, index) {
   ].includes(e.key)) {
     e.preventDefault();
   }
+}
+
+function onDragStart(e, _item) {
+  const item = findItem(_item.keys);
+  if (item) {
+    const patient = findItem(_item.keys.slice(0, 1));
+    const root = patient.root;
+    const selection = { name: _item.name, slot: _item.slot, level: _item.level, ...item };
+    e.dataTransfer.setData('text', JSON.stringify({ from: 'patient', root, selection }));
+    e.effectAllowed = 'copy';
+  } else {
+    e.preventDefault();
+  }
+}
+function onDragEnd(e) {
+  // ...
 }
 
 const scrollArea = useTemplateRef('scrollArea');
