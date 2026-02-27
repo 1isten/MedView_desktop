@@ -22,7 +22,7 @@ export async function readDirs(fullPaths: string[] = []) {
     }
     const filePath = normalizePath(fullPath);
     const fileName = path.basename(filePath);
-    const fileStat = await fsPromises.stat(filePath).catch(() => {});
+    const fileStat = await fsPromises.lstat(filePath).catch(() => {});
     if (
       !fileStat ||
       fileName.startsWith('.') ||
