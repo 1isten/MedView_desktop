@@ -10,6 +10,10 @@ import { pathExists } from './utils/fs';
 import dcmjs from 'dcmjs';
 import { encode } from '@msgpack/msgpack';
 
+import { eq } from 'drizzle-orm';
+import { parsingCache } from '../server/db/schema';
+import { DB_CACHE_FOLDER_NAME, getParsingCacheDB, closeDB } from '../server/db';
+
 // helper function
 function createLimiter(concurrency: number) {
   let active = 0;
@@ -57,7 +61,7 @@ router.post('/api/parse', defineEventHandler(async event => {
         const limit = createLimiter(16);
         await handlePaths(rootPaths, '*');
         async function handlePaths(fullPaths: string[], rootPath?: string) {
-          await Promise.all(fullPaths.map(fullPath => limit(async () => {
+          await Promise.all(fullPaths.map(async (fullPath) => {
             const access = await pathExists(fullPath);
             if (!access) {
               return;
@@ -67,12 +71,11 @@ router.post('/api/parse', defineEventHandler(async event => {
               return;
             }
             if (rootPath === '*') {
-              const cacheFolder = join(fileStat.isDirectory() ? fullPath : dirname(fullPath), '.pmtaro', 'cache', 'parsing');
-              if (refresh && cacheFolder && existsSync(cacheFolder)) {
-                rmSync(cacheFolder, { recursive: true, force: true });
-              }
-              if (!existsSync(cacheFolder)) {
-                mkdirSync(cacheFolder, { recursive: true });
+              // refresh cache
+              if (refresh) {
+                const rootPath = fileStat.isDirectory() ? fullPath : dirname(fullPath);
+                const db = await getParsingCacheDB(rootPath);
+                await db.delete(parsingCache).where(eq(parsingCache.root, rootPath));
               }
             }
             if (fileStat.isDirectory()) {
@@ -82,9 +85,9 @@ router.post('/api/parse', defineEventHandler(async event => {
             } else if (fileStat.isFile()) {
               const fileName = basename(fullPath);
               const filePath = normalizePath(fullPath);
-              await handleFile(fileName, filePath, fileStat.size, fileStat.mtimeMs, rootPath === '*' ? dirname(fullPath) : rootPath);
+              await limit(() => handleFile(fileName, filePath, fileStat.size, fileStat.mtimeMs, rootPath === '*' ? dirname(fullPath) : rootPath));
             }
-          })));
+          }));
         }
         async function handleFile(fileName: string, filePath: string, fileSize: number, fileMtimeMs: number, rootPath?: string) {
           if (
@@ -96,16 +99,18 @@ router.post('/api/parse', defineEventHandler(async event => {
           const type = extname(fileName).toLowerCase();
           if (type === '' || type === '.dcm' || type === '.dicom') {
             try {
-              const cacheName = `${filePath.slice((rootPath || '').length)}|${fileSize}|${fileMtimeMs}`;
-              const cacheNameHashed = createHash('md5').update(cacheName).digest('hex') + '.json';
-              const cacheFolder = rootPath ? join(rootPath, '.pmtaro', 'cache', 'parsing') : null;
+              const cacheKey = createHash('md5')
+                .update(`${filePath.slice((rootPath || '').length)}|${fileSize}|${fileMtimeMs}`) // path|size|mtime
+                .digest('hex');
 
               // read cache
-              if (cacheFolder) {
-                const cacheFile = join(cacheFolder, cacheNameHashed);
-                const cacheContent = await readFile(cacheFile, { encoding: 'utf-8' }).catch(() => {});
-                if (cacheContent) {
-                  const payload = JSON.parse(cacheContent);
+              if (rootPath) {
+                const db = await getParsingCacheDB(rootPath);
+                const cache = await db.select().from(parsingCache).where(eq(parsingCache.key, cacheKey)).get();
+                if (cache) {
+                  const payload = {
+                    ...cache,
+                  };
                   controller.enqueue(encode(payload));
                   return; // hit cache
                 }
@@ -180,6 +185,7 @@ router.post('/api/parse', defineEventHandler(async event => {
                   // ...
 
                   const payload: any = {
+                    key: cacheKey,
                     name: fileName,
                     path: filePath,
                     root: rootPath,
@@ -222,10 +228,19 @@ router.post('/api/parse', defineEventHandler(async event => {
                   };
 
                   // write cache
-                  if (cacheFolder) {
-                    const cacheFile = join(cacheFolder, cacheNameHashed);
-                    payload.cacheFile = cacheFile;
-                    await writeFile(cacheFile, JSON.stringify(payload), { encoding: 'utf-8' }).catch(() => {});
+                  if (rootPath) {
+                    const db = await getParsingCacheDB(rootPath);
+                    await db.insert(parsingCache).values({ ...payload }).onConflictDoUpdate({
+                      target: parsingCache.key,
+                      set: {
+                        name: payload.name,
+                        path: payload.path,
+                        root: payload.root,
+                        type: payload.type,
+                        tags: payload.tags,
+                        isVolume: payload.isVolume,
+                      },
+                    });
                   }
 
                   controller.enqueue(encode(payload));
@@ -251,41 +266,81 @@ router.post('/api/parse', defineEventHandler(async event => {
   return sendStream(event, stream);
 }));
 
-router.post('/api/cache-thumbnail', defineEventHandler(async event => {
+router.get('/api/parsing/cache/thumbnail', defineEventHandler(async event => {
+  const cacheKey = `${getQuery(event).cacheKey ?? getQuery(event).cache ?? getQuery(event).key ?? ''}`;
+  let rootPath = `${getQuery(event).rootPath ?? getQuery(event).root ?? ''}`;
+  if (rootPath) rootPath = decodeURIComponent(rootPath);
+  if (cacheKey && rootPath) {
+    const db = await getParsingCacheDB(rootPath);
+    const cache = await db.select().from(parsingCache).where(eq(parsingCache.key, cacheKey)).get();
+    if (cache && cache.thumbnailDataURL) {
+      const {
+        thumbnailDataURL,
+        thumbnailWidth,
+        thumbnailHeight,
+        // ...payload
+      } = cache;
+      return {
+        // ...payload,
+        thumbnail: {
+          dataURL: thumbnailDataURL,
+          width: thumbnailWidth,
+          height: thumbnailHeight,
+        },
+      };
+    }
+  }
+  return { thumbnail: null };
+}));
+router.patch('/api/parsing/cache/thumbnail', defineEventHandler(async event => {
   const body = await readBody(event);
-  const cacheFile = body.cacheFile as string;
+  const rootPath = body.rootPath as string;
+  const cacheKey = body.cacheKey as string;
   const dataURL = body.dataURL as string;
   const width = body.width as number;
   const height = body.height as number;
-  if (dataURL && width && height && cacheFile && existsSync(cacheFile)) {
-    const cacheContent = await readFile(cacheFile, { encoding: 'utf-8' });
-    if (cacheContent) {
-      const payload = JSON.parse(cacheContent);
-      payload.thumbnail = {
-        dataURL,
-        width,
-        height,
+  if (rootPath && cacheKey && dataURL && width && height) {
+    const db = await getParsingCacheDB(rootPath);
+    const patched = await db.update(parsingCache).set({
+      thumbnailDataURL: dataURL,
+      thumbnailWidth: width,
+      thumbnailHeight: height,
+    }).where(eq(parsingCache.key, cacheKey)).returning();
+    if (patched.length > 0) {
+      const {
+        thumbnailDataURL,
+        thumbnailWidth,
+        thumbnailHeight,
+        // ...payload
+      } = patched[0];
+      return {
+        // ...payload,
+        thumbnail: {
+          dataURL: thumbnailDataURL,
+          width: thumbnailWidth,
+          height: thumbnailHeight,
+        },
       };
-      await writeFile(cacheFile, JSON.stringify(payload), { encoding: 'utf-8' }).catch(() => {});
-      return payload;
     }
   }
   return { thumbnail: null };
 }));
 
-router.delete('/api/cache-clear', defineEventHandler(async event => {
+router.delete('/api/parsing/cache/clear', defineEventHandler(async event => {
   const body = await readBody(event);
   const rootPaths = (body.rootPaths || []) as string[];
-  return Promise.all(rootPaths.map(async (rootPath: string) => {
-    if (rootPath && existsSync(rootPath)) {
-      const fileStat = await stat(rootPath);
-      const cacheFolder = join(fileStat.isDirectory() ? rootPath : dirname(rootPath), '.pmtaro');
+  return Promise.all(rootPaths.map(async (fullPath: string) => {
+    if (fullPath && existsSync(fullPath)) {
+      const fileStat = await stat(fullPath);
+      const rootPath = fileStat.isDirectory() ? fullPath : dirname(fullPath);
+      const cacheFolder = join(rootPath, DB_CACHE_FOLDER_NAME);
       if (cacheFolder && existsSync(cacheFolder)) {
+        closeDB(dirname(cacheFolder));
         rmSync(cacheFolder, { recursive: true, force: true });
-        return { root: rootPath, cache: 0 };
+        return { root: fullPath, cache: 0 };
       }
     }
-    return { root: rootPath, cache: 1 };
+    return { root: fullPath, cache: 1 };
   }));
 }));
 

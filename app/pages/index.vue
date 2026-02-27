@@ -265,7 +265,7 @@ function clearRecentAddedRoots(clearCache = false) {
 }
 
 function clearRootCache(rootPaths = []) {
-  return $fetch('h3://localhost/api/cache-clear', {
+  return $fetch('h3://localhost/api/parsing/cache/clear', {
     method: 'DELETE',
     body: { rootPaths },
   }).then(res => {

@@ -84,7 +84,7 @@ export const useParsingStore = defineStore('parsing', () => {
             }
             const patientIndex = parsedData.value.patientsInOrder.findIndex((item: any) => {
               if (item.PatientDescription && PatientDescription) {
-                // return item.PatientDescription.localeCompare(PatientDescription) > 0;
+                return item.PatientDescription.localeCompare(PatientDescription) > 0;
               }
               return false;
             });
@@ -158,7 +158,7 @@ export const useParsingStore = defineStore('parsing', () => {
               fileName,
               filePath,
               isVolume: !!chunk.isVolume,
-              ...(chunk.cacheFile ? { cacheFile: chunk.cacheFile } : {}),
+              ...(chunk.key ? { cacheKey: chunk.key } : {}),
             };
             if (!series.instancesInOrder) {
               series.instancesInOrder = [] as any[];
