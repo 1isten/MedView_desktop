@@ -273,7 +273,8 @@ watch(() => props.selectedDataItem, (currSelection, prevSelection) => {
                 n: instanceInfo.InstanceNumber,
                 name: instanceInfo.fileName,
                 path: instanceInfo.filePath,
-                cache: instanceInfo.cacheFile,
+                cache: instanceInfo.cacheKey,
+                root: patientInfo.root,
               };
               seriesInstances.push(instance);
             });
@@ -292,6 +293,7 @@ watch(() => props.selectedDataItem, (currSelection, prevSelection) => {
         break;
       }
       case 'study': {
+        const patientInfo = parsingStore.findItem(currSelection.keys.slice(0, -1));
         const studyInfo = currSelection;
         const seriesThumbnails = [];
 
@@ -306,7 +308,8 @@ watch(() => props.selectedDataItem, (currSelection, prevSelection) => {
               n: instanceInfo.InstanceNumber,
               name: instanceInfo.fileName,
               path: instanceInfo.filePath,
-              cache: instanceInfo.cacheFile,
+              cache: instanceInfo.cacheKey,
+              root: patientInfo.root,
             };
             seriesInstances.push(instance);
           });
@@ -324,6 +327,8 @@ watch(() => props.selectedDataItem, (currSelection, prevSelection) => {
         break;
       }
       case 'series': {
+        const patientInfo = parsingStore.findItem(currSelection.keys.slice(0, -2));
+        // const studyInfo = parsingStore.findItem(currSelection.keys.slice(0, -1));
         const seriesInfo = currSelection;
         const seriesInstances = [];
         seriesInfo.instancesInOrder?.forEach(({ key: instanceKey }, instanceIndex) => {
@@ -333,7 +338,8 @@ watch(() => props.selectedDataItem, (currSelection, prevSelection) => {
             n: instanceInfo.InstanceNumber,
             name: instanceInfo.fileName,
             path: instanceInfo.filePath,
-            cache: instanceInfo.cacheFile,
+            cache: instanceInfo.cacheKey,
+            root: patientInfo.root,
           };
           const thumbnail = {
             slot: 'instance',
@@ -347,6 +353,8 @@ watch(() => props.selectedDataItem, (currSelection, prevSelection) => {
         break;
       }
       case 'instance': {
+        const patientInfo = parsingStore.findItem(currSelection.keys.slice(0, -3));
+        // const studyInfo = parsingStore.findItem(currSelection.keys.slice(0, -2));
         const seriesInfo = currSelection.parentSeries;
         const seriesInstances = [];
         seriesInfo.instancesInOrder?.forEach(({ key: instanceKey }, instanceIndex) => {
@@ -356,7 +364,8 @@ watch(() => props.selectedDataItem, (currSelection, prevSelection) => {
             n: instanceInfo.InstanceNumber,
             name: instanceInfo.fileName,
             path: instanceInfo.filePath,
-            cache: instanceInfo.cacheFile,
+            cache: instanceInfo.cacheKey,
+            root: patientInfo.root,
           };
           const thumbnail = {
             slot: 'instance',

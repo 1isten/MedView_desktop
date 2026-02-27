@@ -122,7 +122,7 @@ const { onContextMenu } = useContextMenu('file-explorer-item', computed(() => [
   rightClickContext.value?.level === 1 && {
     label: 'Remove',
     click: () => {
-      emit('root:remove', findItem(rightClickContext.value.indexes));
+      emit('root:remove', { rootItem: findItem(rightClickContext.value.indexes), clearCache: true });
     },
   },
   rightClickContext.value?.path && {

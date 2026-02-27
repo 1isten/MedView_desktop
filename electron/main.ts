@@ -4,6 +4,7 @@ import type Electron from 'electron/main';
 import os from 'node:os';
 import fsPromises from 'node:fs/promises';
 import fs from 'node:fs';
+import url from 'node:url';
 import path from 'node:path';
 import { normalizePath } from '../server/utils/path';
 import { pathExists, readDirs } from '../server/utils/fs';
@@ -16,6 +17,9 @@ import {
   APP_URL_DEV,
   VOLVIEW_URL_DEV,
 } from '../app/constants';
+
+const __filename = import.meta.filename || url.fileURLToPath(import.meta.url);
+const __dirname = import.meta.dirname || path.dirname(__filename);
 
 const platform = process.platform || os.platform();
 const isMac = platform === 'darwin';
@@ -270,9 +274,7 @@ app.whenReady().then(() => {
   createWindow(openFromPaths.pop());
 
   app.on('activate', () => {
-    if (app.hasSingleInstanceLock()) {
-      createWindow(openFromPaths.pop());
-    } else if (BrowserWindow.getAllWindows().length === 0) {
+    if (BrowserWindow.getAllWindows().length === 0) {
       createWindow(openFromPaths.pop());
     }
   });

@@ -93,9 +93,10 @@ async function render(type = 'image/webp', quality = 0.1) {
   if (props.renderedThumbnails[filePath.value]) {
     return props.renderedThumbnails[filePath.value];
   }
-  const cacheFile = props.thumbnailItem?.file?.cache;
-  if (cacheFile) {
-    const payload = await $fetch(`h3://localhost/file/${encodeURIComponent(cacheFile)}`, { responseType: 'json' }).catch(console.error);
+  const rootPath = props.thumbnailItem?.file?.root;
+  const cacheKey = props.thumbnailItem?.file?.cache;
+  if (cacheKey && rootPath) {
+    const payload = await $fetch(`h3://localhost/api/parsing/cache/thumbnail?cacheKey=${cacheKey}&rootPath=${encodeURIComponent(rootPath)}`, { responseType: 'json' }).catch(console.error);
     if (payload?.thumbnail?.dataURL) {
       const renderingResult = {
         ...payload.thumbnail,
@@ -120,8 +121,8 @@ async function render(type = 'image/webp', quality = 0.1) {
         width: canvasElement.width,
         height: canvasElement.height,
       };
-      if (cacheFile) {
-        await $fetch('h3://localhost/api/cache-thumbnail', { method: 'POST', body: { cacheFile, ...renderingResult } }).catch(console.error);
+      if (cacheKey && rootPath) {
+        await $fetch('h3://localhost/api/parsing/cache/thumbnail', { method: 'PATCH', body: { cacheKey, rootPath, ...renderingResult } }).catch(console.error);
       }
       emit('rendered', {
         filePath: filePath.value,
