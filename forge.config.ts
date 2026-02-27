@@ -63,6 +63,24 @@ const config: ForgeConfig = {
       '^/node_modules/.cache',
       // ...
     ],
+    extendInfo: {
+      CFBundleDocumentTypes: [
+        {
+          CFBundleTypeName: 'DICOM File',
+          CFBundleTypeRole: 'Viewer',
+          LSHandlerRank: 'Owner',
+          CFBundleTypeExtensions: ['dcm'],
+          CFBundleTypeMIMETypes: ['application/dicom'],
+          LSItemContentTypes: ['org.nema.dicom'],
+        },
+        {
+          CFBundleTypeName: 'Folder',
+          CFBundleTypeRole: 'Viewer',
+          LSHandlerRank: 'Owner',
+          LSItemContentTypes: ['public.folder'],
+        },
+      ],
+    },
   },
   makers: [
     new MakerZIP({}, ['win32', 'darwin']),
