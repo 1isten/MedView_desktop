@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { existsSync, mkdirSync } from 'node:fs';
 
-import { drizzle } from 'drizzle-orm/libsql/wasm';
+import { drizzle } from 'drizzle-orm/libsql';
 import { createClient } from '@libsql/client';
 import * as schema from './schema';
 
