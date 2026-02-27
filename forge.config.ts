@@ -57,7 +57,7 @@ const config: ForgeConfig = {
       '^/tsconfig.json',
       '^/nuxt.config.ts',
       '^/forge.config.ts',
-      // '^/README.md',
+      '^/README.md',
       // ...
       '^/electron/.*\.ts$',
       '^/node_modules/.cache',
