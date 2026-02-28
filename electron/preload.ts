@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('$electron', {
 
   getVolViewURL: () => ipcRenderer.invoke('getVolViewURL'),
 
+  // ...
+
   showContextMenu() {
     ipcRenderer.send('showContextMenu', ...arguments);
   },
@@ -39,6 +41,23 @@ contextBridge.exposeInMainWorld('$electron', {
   readDirectory() {
     return ipcRenderer.invoke('readDirectory', ...arguments);
   },
+
+  // ...
+
+  async getThirdpartyModules() {
+    return ipcRenderer.invoke('getThirdpartyModules', ...arguments);
+  },
+  async getThirdpartyModule() {
+    return ipcRenderer.invoke('getThirdpartyModule', ...arguments);
+  },
+  async clickThirdpartyModuleContextMenu(moduleId: string, ...args: any[]) {
+    return ipcRenderer.invoke(`${moduleId}/@contextmenu`, ...args);
+  },
+  openThirdpartyModuleUI() {
+    ipcRenderer.send('openThirdpartyModuleUI', ...arguments);
+  },
+
+  // ...
 
   getPathForFile(file: File) {
     return webUtils.getPathForFile(file);

@@ -25,6 +25,35 @@ const platform = process.platform || os.platform();
 const isMac = platform === 'darwin';
 // const isWin = platform === 'win32';
 
+const modules: Record<string, any> = {/* registered thirdparty modules ... */};
+const thirdparty_modules = path.join(app.isPackaged ? app.getAppPath() : __dirname, '..', 'thirdparty_modules');
+if (fs.existsSync(thirdparty_modules)) {
+  fs.readdirSync(thirdparty_modules).forEach((author: string) => {
+    if (author.startsWith('@')) {
+      fs.readdirSync(path.join(thirdparty_modules, author)).forEach((mod: string) => {
+        const main = path.join(thirdparty_modules, author, mod, 'main.js');
+        if (fs.existsSync(main)) {
+          import(main).then(async ({ default: module }) => {
+            const moduleId = `${author}/${mod}`;
+            const { setup, api, ...moduleProps } = module;
+            if (setup && typeof setup === 'function') {
+              await setup({}, app);
+            }
+            if (api && typeof api === 'object') {
+              Object.entries(api).forEach(([api, handler]) => {
+                if (typeof handler === 'function') {
+                  ipcMain.handle(`${moduleId}/${api}`, (e, ...args) => handler(...args));
+                }
+              });
+            }
+            modules[moduleId] = { ...moduleProps };
+          }).catch(console.error);
+        }
+      });
+    }
+  });
+}
+
 const menuTemplate = [
   // { role: 'appMenu' }
   ...(isMac
@@ -270,6 +299,55 @@ app.whenReady().then(() => {
     }
     return [folders, files];
   });
+
+  // ...
+
+  ipcMain.handle('getThirdpartyModules', async (e, ui = true, ...args) => {
+    const thirdpartyModules: any[] = [];
+    Object.entries(modules).forEach(([moduleId, moduleProps]) => {
+      if (ui) {
+        if (!!moduleProps.ui) {
+          thirdpartyModules.push({ id: moduleId, ...moduleProps });
+        }
+      } else {
+        thirdpartyModules.push({ id: moduleId, ...moduleProps });
+      }
+    });
+    return JSON.parse(JSON.stringify(thirdpartyModules));
+  });
+  ipcMain.handle('getThirdpartyModule', async (e, moduleId: string, ...args) => {
+    return modules[moduleId] ? JSON.parse(JSON.stringify({ moduleId, ...modules[moduleId] })) : null;
+  });
+  ipcMain.on('openThirdpartyModuleUI', (e, moduleId: string, ...args) => {
+    const module = modules[moduleId];
+    if (module?.ui?.entry) {
+      const ui = path.isAbsolute(module.ui.entry) ? module.ui.entry : path.join(thirdparty_modules, moduleId, module.ui.entry);
+      if (fs.existsSync(ui)) {
+        const win = new BrowserWindow({
+          darkTheme: true,
+          backgroundColor: '#212121',
+          ...(module.ui.windowOptions ?? {}),
+          useContentSize: true,
+          webPreferences: {
+            preload: path.join(__dirname, 'preload.mod.js'),
+            devTools: app.isPackaged ? !!DEBUG : true,
+          },
+          show: false,
+        });
+        win.webContents.on('ipc-message', (e, channel) => {
+          if (channel === 'DOMContentLoaded') {
+            if (args.length > 0) {
+              win.webContents.send('load-args', ...args);
+            }
+            win.show();
+          }
+        });
+        win.loadFile(ui);
+      }
+    }
+  });
+
+  // ...
 
   createWindow(openFromPaths.pop());
 

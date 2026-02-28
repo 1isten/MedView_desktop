@@ -21,5 +21,12 @@ import * as esbuild from 'esbuild';
       outdir: 'electron',
       allowOverwrite: true,
     }),
+    esbuild.build({
+      entryPoints: ['electron/preload.mod.ts'],
+      format: 'cjs',
+      minify: true,
+      outdir: 'electron',
+      allowOverwrite: true,
+    }),
   ]);
 })();
