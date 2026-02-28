@@ -96,6 +96,14 @@ const findItem = (indexes = []) => {
   }
   return item ?? null;
 };
+const makePayloadForThirdpartyModule = (_item) => {
+  const item = findItem(_item.indexes);
+  if (item) {
+    const selection = { name: _item.name, path: _item.path, isDirectory: _item.isDirectory, ...toRaw(item) };
+    return { from: 'root', selection };
+  } 
+  return null;
+};
 
 async function handleClickItem(_item, index, expanded) {
   emit('update:selected', _item.path);
@@ -114,8 +122,80 @@ function handleDoubleClickItem(_item, index) {
   console.log(index, _item);
 }
 
+const appStore = useAppStore();
+const thirdpartyModules = computed(() => appStore.thirdpartyModules);
+const thirdpartyModulesContextMenus = computed(() => {
+  const menus = [];
+  if (thirdpartyModules.value?.length) {
+    thirdpartyModules.value.forEach(({ id, contextMenus }) => {
+      if (contextMenus?.length) {
+        contextMenus.forEach((menu, index) => {
+          if (
+            menu.slots?.includes('folder') ||
+            menu.slots?.includes('file')
+          ) {
+            menus.push({ moduleId: id, index, ...menu });
+          }
+        });
+      }
+    });
+  }
+  return menus;
+});
+
 const rightClickContext = shallowRef(null);
 const { onContextMenu } = useContextMenu('file-explorer-item', computed(() => [
+  ...thirdpartyModulesContextMenus.value.map((item, i) => {
+    if (item.submenu && Array.isArray(item.submenu)) {
+      return {
+        label: item.label,
+        submenu: item.submenu.map((subitem, j) => {
+          if (subitem.slots) {
+            if (rightClickContext.value?.isDirectory) {
+              if (!subitem.slots.includes('folder')) {
+                return false;
+              }
+            } else {
+              if (!subitem.slots.includes('file')) {
+                return false;
+              }
+            }
+          }
+          return {
+            label: subitem.label,
+            click: async () => {
+              const payload = makePayloadForThirdpartyModule(rightClickContext.value);
+              if (subitem.ui) {
+                appStore.openThirdpartyModuleUI(item.moduleId, payload);
+              } else {
+                const res = await $electron?.clickThirdpartyModuleContextMenu(item.moduleId, [item.index, j], payload);
+                console.log(res);
+              }
+            },
+          };
+        }).filter(Boolean),
+      };
+    } else {
+      if (item.slots) {
+        //
+      }
+      return {
+        label: item.label,
+        click: async () => {
+          const payload = makePayloadForThirdpartyModule(rightClickContext.value);
+          if (item.ui) {
+            appStore.openThirdpartyModuleUI(item.moduleId, payload);
+          } else {
+            const res = await $electron?.clickThirdpartyModuleContextMenu(item.moduleId, [item.index], payload);
+            console.log(res);
+          }
+        },
+      };
+    }
+  }).filter(Boolean),
+
+  // ...
+
   rightClickContext.value?.isDirectory && {
     label: 'Refresh',
     click: () => {
@@ -208,10 +288,9 @@ function handleKeyPressedItem(e, _item, index) {
 }
 
 function onDragStart(e, _item) {
-  const item = findItem(_item.indexes);
-  if (item) {
-    const selection = { name: _item.name, path: _item.path, isDirectory: _item.isDirectory, ...item };
-    e.dataTransfer.setData('text', JSON.stringify({ from: 'root', selection }));
+  const payload = makePayloadForThirdpartyModule(_item);
+  if (payload) {
+    e.dataTransfer.setData('text', JSON.stringify(payload));
     e.effectAllowed = 'copy';
   } else {
     e.preventDefault();

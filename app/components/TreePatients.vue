@@ -74,6 +74,16 @@ const rootPaths = computed(() => props.roots.map(root => root.path));
 const parsingStore = useParsingStore();
 const { parsing, parsedData: data, parsedItems: items, parsedItemsPathMap } = storeToRefs(parsingStore);
 const findItem = parsingStore.findItem;
+const makePayloadForThirdpartyModule = (_item) => {
+  const item = findItem(_item.keys);
+  if (item) {
+    const patient = findItem(_item.keys.slice(0, 1));
+    const root = patient.root;
+    const selection = { name: _item.name, slot: _item.slot, level: _item.level, ...toRaw(item) };
+    return { from: 'patient', root, selection };
+  }
+  return null;
+};
 
 async function handleClickItem(_item, index, expanded, suppressLoadInVolView = false) {
   const item = findItem(_item.keys);
@@ -89,8 +99,107 @@ async function handleClickItem(_item, index, expanded, suppressLoadInVolView = f
   emit('update:selected', selection);
 }
 
+const appStore = useAppStore();
+const thirdpartyModules = computed(() => appStore.thirdpartyModules);
+const thirdpartyModulesContextMenus = computed(() => {
+  const menus = [];
+  if (thirdpartyModules.value?.length) {
+    thirdpartyModules.value.forEach(({ id, contextMenus }) => {
+      if (contextMenus?.length) {
+        contextMenus.forEach((menu, index) => {
+          if (
+            menu.slots?.includes('patient') ||
+            menu.slots?.includes('study') ||
+            menu.slots?.includes('series') ||
+            menu.slots?.includes('instance')
+          ) {
+            menus.push({ moduleId: id, index, ...menu });
+          }
+        });
+      }
+    });
+  }
+  return menus;
+});
+
 const rightClickContext = shallowRef(null);
 const { onContextMenu } = useContextMenu('parsed-tree-item', computed(() => [
+  ...thirdpartyModulesContextMenus.value.map((item, i) => {
+    if (item.submenu && Array.isArray(item.submenu)) {
+      return {
+        label: item.label,
+        submenu: item.submenu.map((subitem, j) => {
+          if (subitem.slots) {
+            if (!rightClickContext.value?.slot) {
+              return false;
+            } else if (rightClickContext.value?.slot === 'patient') {
+              if (!subitem.slots.includes('patient')) {
+                return false;
+              }
+            } else if (rightClickContext.value?.slot === 'study') {
+              if (!subitem.slots.includes('study')) {
+                return false;
+              }
+            } else if (rightClickContext.value?.slot === 'series') {
+              if (!subitem.slots.includes('series')) {
+                return false;
+              }
+            } else if (rightClickContext.value?.slot === 'instance') {
+              if (!subitem.slots.includes('instance')) {
+                return false;
+              }
+            }
+          }
+          return {
+            label: subitem.label,
+            click: async () => {
+              const payload = makePayloadForThirdpartyModule(rightClickContext.value);
+              if (subitem.ui) {
+                appStore.openThirdpartyModuleUI(item.moduleId, payload);
+              } else {
+                const res = await $electron?.clickThirdpartyModuleContextMenu(item.moduleId, [item.index, j], payload);
+                console.log(res);
+              }
+            },
+          };
+        }).filter(Boolean),
+      };
+    } else {
+      if (item.slots) {
+        if (!rightClickContext.value?.slot) {
+          return false;
+        } else if (rightClickContext.value?.slot === 'patient') {
+          if (!item.slots.includes('patient')) {
+            return false;
+          }
+        } else if (rightClickContext.value?.slot === 'study') {
+          if (!item.slots.includes('study')) {
+            return false;
+          }
+        } else if (rightClickContext.value?.slot === 'series') {
+          if (!item.slots.includes('series')) {
+            return false;
+          }
+        } else if (rightClickContext.value?.slot === 'instance') {
+          if (!item.slots.includes('instance')) {
+            return false;
+          }
+        }
+      }
+      return {
+        label: item.label,
+        click: async () => {
+          const payload = makePayloadForThirdpartyModule(rightClickContext.value);
+          if (item.ui) {
+            appStore.openThirdpartyModuleUI(item.moduleId, payload);
+          } else {
+            const res = await $electron?.clickThirdpartyModuleContextMenu(item.moduleId, [item.index], payload);
+            console.log(res);
+          }
+        },
+      };
+    }
+  }).filter(Boolean),
 
   // ...
 
@@ -150,12 +259,9 @@ function handleKeyPressedItem(e, _item, index) {
 }
 
 function onDragStart(e, _item) {
-  const item = findItem(_item.keys);
-  if (item) {
-    const patient = findItem(_item.keys.slice(0, 1));
-    const root = patient.root;
-    const selection = { name: _item.name, slot: _item.slot, level: _item.level, ...item };
-    e.dataTransfer.setData('text', JSON.stringify({ from: 'patient', root, selection }));
+  const payload = makePayloadForThirdpartyModule(_item);
+  if (payload) {
+    e.dataTransfer.setData('text', JSON.stringify(payload));
     e.effectAllowed = 'copy';
   } else {
     e.preventDefault();
@@ -289,6 +395,7 @@ watch(recentClickedThumbnail, (thumbnailItem) => {
 // --- VolView ---
 
 const recentVolViewSelection = shallowRef(null);
+const { isMouseInCoverFlow } = storeToRefs(appStore);
 
 const volviewStore = useVolViewStore();
 const volviewRef = computed(() => volviewStore.volviewRef);
@@ -300,9 +407,6 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('message', handleVolViewEvent);
 });
-
-const appStore = useAppStore();
-const { isMouseInCoverFlow } = storeToRefs(appStore);
 
 const handleVolViewSlicing = useDebounceFn(function handleVolViewSlicing({ uid, slice }) {
   const _seriesItem = items.value.find(item => item.slot === 'series' && item.id === uid);

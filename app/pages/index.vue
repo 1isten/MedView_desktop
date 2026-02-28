@@ -89,6 +89,16 @@
       <v-app-bar-nav-icon v-if="display?.mobile" variant="text" @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
       <v-toolbar-title>{{ appName }}</v-toolbar-title>
       <v-spacer></v-spacer>
+      <v-btn icon variant="plain" v-if="thirdpartyModules.length > 0">
+        <v-icon icon="mdi-puzzle-outline"></v-icon>
+        <v-menu activator="parent">
+          <v-list density="compact">
+            <v-list-item v-for="module in thirdpartyModules" :key="module.id" @click="handleClickModule(module)">
+              <v-list-item-title>{{ module.meta.name }}</v-list-item-title>
+            </v-list-item>
+          </v-list>
+        </v-menu>
+      </v-btn>
       <v-btn icon variant="plain">
         <v-icon icon="mdi-information-outline"></v-icon>
         <v-dialog activator="parent" max-width="360" transition="fade-transition">
@@ -374,6 +384,16 @@ async function refreshTree() {
 
 // ...
 
+const thirdpartyModules = computed(() => appStore.thirdpartyModules);
+async function handleClickModule(module) {
+  if (module.ui) {
+    appStore.openThirdpartyModuleUI(module.id);
+  }
+}
+onBeforeMount(() => {
+  appStore.getThirdpartyModules();
+});
+
 const openFrom = ref(null);
 onMounted(async () => {
   if (typeof $electron === 'undefined') {
@@ -422,10 +442,10 @@ async function onDrop(e, files) {
     }
     return;
   }
-  try {
-    const payload = JSON.parse(e.dataTransfer.getData('text') || 'null');
-    console.log('drop:', payload);
-  } catch (err) {}
+  // try {
+  //   const payload = JSON.parse(e.dataTransfer.getData('text') || 'null');
+  //   console.log('drop:', payload);
+  // } catch (err) {}
 }
 
 function loadUserSelectedFiles(files) {
