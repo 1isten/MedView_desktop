@@ -2,3 +2,6 @@
   path = VolView
   url = https://github.com/1isten/VolView.git
   branch = pmt
+[submodule "thirdparty_modules"]
+  path = thirdparty_modules
+  url = https://github.com/PrivacyProMedical/thirdparty_modules.git
