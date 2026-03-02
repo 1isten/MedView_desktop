@@ -119,9 +119,24 @@ const config: ForgeConfig = {
             }
           }
         }
-        const volviewDir = path.join(resourcesDir, 'volview');
-        if (fs.existsSync(volviewDir)) {
-          fs.copyFileSync('./VolView/LICENSE', path.join(volviewDir, 'LICENSE'));
+        const volview = path.join(resourcesDir, 'volview');
+        if (fs.existsSync(volview)) {
+          fs.copyFileSync('./VolView/LICENSE', path.join(volview, 'LICENSE'));
+        }
+        const thirdparty_modules = path.join(resourcesDir, 'thirdparty_modules');
+        if (fs.existsSync(thirdparty_modules)) {
+          fs.readdirSync(thirdparty_modules).forEach((author: string) => {
+            if (author.startsWith('@')) {
+              fs.readdirSync(path.join(thirdparty_modules, author)).forEach((mod: string) => {
+                const node_modules = path.join(thirdparty_modules, author, mod, 'node_modules');
+                if (fs.existsSync(node_modules)) {
+                  fs.rmSync(node_modules, { recursive: true, force: true });
+                }
+              });
+            }
+          });
+          fs.rmSync(path.join(thirdparty_modules, '.git'), { recursive: true, force: true });
+          fs.rmSync(path.join(thirdparty_modules, '.gitignore'), { recursive: true, force: true });
         }
       }
     },
