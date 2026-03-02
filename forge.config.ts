@@ -17,6 +17,8 @@ import path from 'node:path';
 const __filename = import.meta.filename || url.fileURLToPath(import.meta.url);
 const __dirname = import.meta.dirname || path.dirname(__filename);
 
+const thirdparty_modules = fs.existsSync(path.join(__dirname, 'thirdparty_modules'));
+
 const iconPath = icon ? path.dirname(path.join(__dirname, icon)) : '';
 const config: ForgeConfig = {
   packagerConfig: {
@@ -33,12 +35,14 @@ const config: ForgeConfig = {
       'LICENSE',
       'THIRD-PARTY-NOTICES',
       'public/volview',
+      ...(thirdparty_modules ? ['thirdparty_modules'] : []),
       // ...
     ],
     ignore: [
       '^/.output/public/volview',
       '^/public/volview',
       '^/VolView',
+      ...(thirdparty_modules ? ['^/thirdparty_modules'] : []),
       // ...
       '^/.gitmodules',
       '^/.gitignore',
