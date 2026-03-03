@@ -326,6 +326,7 @@ app.whenReady().then(() => {
         const win = new BrowserWindow({
           darkTheme: true,
           backgroundColor: '#212121',
+          autoHideMenuBar: true,
           ...(module.ui.windowOptions ?? {}),
           useContentSize: true,
           webPreferences: {
