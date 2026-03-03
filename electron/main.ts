@@ -33,7 +33,7 @@ if (fs.existsSync(thirdparty_modules)) {
       fs.readdirSync(path.join(thirdparty_modules, author)).forEach((mod: string) => {
         const main = path.join(thirdparty_modules, author, mod, 'main.js');
         if (fs.existsSync(main)) {
-          import(main).then(async ({ default: module }) => {
+          import(url.pathToFileURL(main).href).then(async ({ default: module }) => {
             const moduleId = `${author}/${mod}`;
             const { setup, api, ...moduleProps } = module;
             if (setup && typeof setup === 'function') {
