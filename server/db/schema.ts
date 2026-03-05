@@ -1,12 +1,12 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const parsingCache = sqliteTable('parsing', {
   key: text('key').primaryKey(), // path|size|mtime
 
+  type: text('type').notNull(),
   name: text('name').notNull(),
   path: text('path').notNull(),
   root: text('root').notNull(),
-  type: text('type').notNull(),
 
   tags: text('tags', { mode: 'json' }).$type<{
     TransferSyntaxUID?: string;
@@ -36,4 +36,7 @@ export const parsingCache = sqliteTable('parsing', {
   thumbnailDataURL: text('thumbnail_data_url'),
   thumbnailWidth: integer('thumbnail_width'),
   thumbnailHeight: integer('thumbnail_height'),
-});
+}, (table => [
+  uniqueIndex('path_idx').on(table.path),
+  index('root_idx').on(table.root),
+]));

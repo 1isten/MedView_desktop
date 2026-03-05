@@ -304,7 +304,8 @@ app.whenReady().then(() => {
 
   ipcMain.handle('getThirdpartyModules', async (e, ui = true, ...args) => {
     const thirdpartyModules: any[] = [];
-    Object.entries(modules).forEach(([moduleId, moduleProps]) => {
+    Object.keys(modules).sort((a, b) => a.localeCompare(b)).forEach(moduleId => {
+      const moduleProps = modules[moduleId];
       if (ui) {
         if (!!moduleProps.ui) {
           thirdpartyModules.push({ id: moduleId, ...moduleProps });
