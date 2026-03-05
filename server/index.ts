@@ -52,8 +52,9 @@ router.post('/api/parse', defineEventHandler(async event => {
     }
     return '';
   }).filter(Boolean);
-  const deep = !!body.deep;
-  const refresh = !!body.refresh;
+  // const deep = !!body.deep;
+  const useCache = typeof body.cache === 'boolean' ? body.cache : true;
+  const refreshCache = useCache === false ? false : !!body.refresh;
 
   const filesInDICOMDIR: Record<string, boolean> = Object.create(null);
 
@@ -79,7 +80,7 @@ router.post('/api/parse', defineEventHandler(async event => {
             }
             if (rootPath === '*') {
               // refresh cache
-              if (refresh) {
+              if (refreshCache) {
                 const rootPath = fileStat.isDirectory() ? fullPath : dirname(fullPath);
                 const db = await getParsingCacheDB(rootPath);
                 await db.delete(parsingCache).where(eq(parsingCache.root, rootPath));
@@ -190,21 +191,25 @@ router.post('/api/parse', defineEventHandler(async event => {
           ) {
             return;
           }
+          if (filesInDICOMDIR[filePath] && !record) {
+            return; // already handled in DICOMDIR
+          }
           const type = extname(fileName).toLowerCase();
-          if (type === '' || type === '.dcm' || type === '.dicom') {
+          if (
+            // type === '.dicom' ||
+            type === '.dcm' ||
+            type === ''
+          ) {
             try {
-              const cacheKey = createHash('md5')
+              const cacheKey = !useCache ? undefined : createHash('md5')
                 .update(`${filePath.slice((rootPath || '').length)}|${fileSize}|${fileMtimeMs}`) // path|size|mtime
                 .digest('hex');
 
               // read cache
-              if (rootPath) {
+              if (useCache && rootPath) {
                 const db = await getParsingCacheDB(rootPath);
-                const cache = await db.select().from(parsingCache).where(eq(parsingCache.key, cacheKey)).get();
+                const cache = await db.select().from(parsingCache).where(eq(parsingCache.key, cacheKey!)).get();
                 if (cache) {
-                  if (filesInDICOMDIR[filePath] && !record) {
-                    return; // already handled in DICOMDIR
-                  }
                   const payload = {
                     ...cache,
                   };
@@ -391,7 +396,7 @@ router.post('/api/parse', defineEventHandler(async event => {
               ].includes(payload.tags.SOPClassUID);
 
               // write cache
-              if (rootPath) {
+              if (useCache && rootPath) {
                 const db = await getParsingCacheDB(rootPath);
                 const cache = await db.select().from(parsingCache).where(eq(parsingCache.path, payload.path)).get();
                 // remove outdated cache
