@@ -45,6 +45,10 @@ export const useParsingStore = defineStore('parsing', () => {
     });
     let count = 0;
     for await (const chunk of decodeMultiStream(stream) as AsyncIterable<any>) {
+      if (chunk?.type === 'DICOMDIR') {
+        // console.log('is DICOMDIR:', chunk);
+        continue;
+      }
       if (chunk?.type === 'application/dicom') {
         const { name: fileName, path: filePath, root: rootPath } = chunk;
         const {
