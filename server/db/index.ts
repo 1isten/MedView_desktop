@@ -26,10 +26,10 @@ export async function getParsingCacheDB(rootPath: string) {
   await client.execute(`
     CREATE TABLE IF NOT EXISTS parsing (
       key TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
       name TEXT NOT NULL,
       path TEXT NOT NULL,
       root TEXT NOT NULL,
-      type TEXT NOT NULL,
       tags TEXT,
       is_volume INTEGER NOT NULL DEFAULT 0,
       thumbnail_data_url TEXT,
@@ -37,6 +37,8 @@ export async function getParsingCacheDB(rootPath: string) {
       thumbnail_height INTEGER
     )
   `);
+  await client.execute('CREATE UNIQUE INDEX IF NOT EXISTS path_idx ON parsing (path)');
+  await client.execute('CREATE INDEX IF NOT EXISTS root_idx ON parsing (root)');
 
   db = drizzle(client, { schema });
   databases.set(rootPath, db);

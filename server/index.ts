@@ -186,10 +186,12 @@ router.post('/api/parse', defineEventHandler(async event => {
 
                   const payload: any = {
                     key: cacheKey,
+
+                    type: 'application/dicom',
                     name: fileName,
                     path: filePath,
                     root: rootPath,
-                    type: 'application/dicom',
+
                     tags: {
                       TransferSyntaxUID,
                       SOPClassUID,
@@ -212,20 +214,20 @@ router.post('/api/parse', defineEventHandler(async event => {
                       SOPInstanceUID,
                       InstanceNumber,
                     },
-                    // Subset of those listed at:
-                    // http://dicom.nema.org/medical/dicom/current/output/html/part04.html#sect_B.5
-                    isVolume: [
-                      '1.2.840.10008.5.1.4.1.1.2.1', // Enhanced CT Image Storage
-                      '1.2.840.10008.5.1.4.1.1.4.1', // Enhanced MR Image Storage
-                      '1.2.840.10008.5.1.4.1.1.4.3', // Enhanced MR Color Image
-                      '1.2.840.10008.5.1.4.1.1.6.2', // Enhanced US Volume
-                      '1.2.840.10008.5.1.4.1.1.12.1.1', // Enhanced XA Image Storage
-                      '1.2.840.10008.5.1.4.1.1.12.2.1', // Enhanced XRF Image Storage
-                      '1.2.840.10008.5.1.4.1.1.88.22', // Enhanced SR
-                      '1.2.840.10008.5.1.4.1.1.130', // EnhancedPETImage
-                      // ...
-                    ].includes(SOPClassUID),
                   };
+                  // Subset of those listed at:
+                  // http://dicom.nema.org/medical/dicom/current/output/html/part04.html#sect_B.5
+                  payload.isVolume = [
+                    '1.2.840.10008.5.1.4.1.1.2.1', // Enhanced CT Image Storage
+                    '1.2.840.10008.5.1.4.1.1.4.1', // Enhanced MR Image Storage
+                    '1.2.840.10008.5.1.4.1.1.4.3', // Enhanced MR Color Image
+                    '1.2.840.10008.5.1.4.1.1.6.2', // Enhanced US Volume
+                    '1.2.840.10008.5.1.4.1.1.12.1.1', // Enhanced XA Image Storage
+                    '1.2.840.10008.5.1.4.1.1.12.2.1', // Enhanced XRF Image Storage
+                    '1.2.840.10008.5.1.4.1.1.88.22', // Enhanced SR
+                    '1.2.840.10008.5.1.4.1.1.130', // EnhancedPETImage
+                    // ...
+                  ].includes(payload.tags.SOPClassUID);
 
                   // write cache
                   if (rootPath) {
@@ -233,10 +235,10 @@ router.post('/api/parse', defineEventHandler(async event => {
                     await db.insert(parsingCache).values({ ...payload }).onConflictDoUpdate({
                       target: parsingCache.key,
                       set: {
+                        type: payload.type,
                         name: payload.name,
                         path: payload.path,
                         root: payload.root,
-                        type: payload.type,
                         tags: payload.tags,
                         isVolume: payload.isVolume,
                       },
