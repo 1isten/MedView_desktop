@@ -66,7 +66,7 @@ router.post('/api/parse', defineEventHandler(async event => {
           const DICOMDIRs: { fullPath: string, fileName?: string, fileStat?: Stats }[] = [];
           const files = [] as typeof DICOMDIRs;
           const folders = [] as typeof DICOMDIRs;
-          // categorize paths into DICOMDIR(s), file(s) and folder(s)
+          // categorize into DICOMDIR(s), file(s) and folder(s)
           for (let i = 0; i < fullPaths.length; i++) {
             const fullPath = fullPaths[i];
             const access = await pathExists(fullPath);
@@ -176,7 +176,7 @@ router.post('/api/parse', defineEventHandler(async event => {
             const filePath = normalizePath(fullPath);
             await limit(() => handleFile(fileName!, filePath, fileStat!.size, fileStat!.mtimeMs, rootPath === '*' ? dirname(fullPath) : rootPath));
           }));
-          // handle folder(s) last
+          // handle folder(s) last (deep recursion)
           await Promise.all(folders.map(async ({ fullPath }) => {
             const subPaths = await readdir(fullPath);
             const subFullPaths = subPaths.map(relativePath => join(fullPath, relativePath));
