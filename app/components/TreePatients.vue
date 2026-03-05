@@ -343,7 +343,9 @@ async function parse({ cache = true, refresh = false } = {}) {
               if (firstSeries) {
                 firstSeries.expanded = true;
                 nextTick(() => {
-                  const firstInstance = openFromDirectory.value ? findItem(items.value.find(item => item.level === 4)?.keys || []) : findItem(parsedItemsPathMap.value[openFromPath.value]?.keys || []);
+                  const firstInstance = (openFromDirectory.value || normalizePath(openFromPath.value).split('/').pop() === 'DICOMDIR')
+                    ? findItem(items.value.find(item => item.level === 4)?.keys || [])
+                    : findItem(parsedItemsPathMap.value[openFromPath.value]?.keys || []);
                   if (firstInstance?.filePath) {
                     const selection = items.value[firstInstance.i];
                     if (selection) {
