@@ -326,8 +326,8 @@ onMounted(() => {
   }
 });
 
-async function parse({ refresh = false } = {}) {
-  const count = await parsingStore.parse(rootPaths.value, true, !!refresh);
+async function parse({ cache = true, refresh = false } = {}) {
+  const count = await parsingStore.parse(rootPaths.value, true, cache, refresh);
   console.log(count, { data, items, pathToKeys: parsedItemsPathMap.value, $scrollToItem: scrollToItem });
   if (openFromPath.value && !openFromHandled.value) {
     nextTick(() => {
@@ -364,10 +364,10 @@ watch(rootPaths, (currRoots, prevRoots) => {
   if (!currRoots.length || currRoots.length < prevRoots.length) {
     return;
   }
-  parse();
+  parse({ cache: true });
 }, { immediate: true });
 watch(() => props.refreshedAt, () => {
-  parse({ refresh: true });
+  parse({ cache: true, refresh: true });
 }, { immediate: false });
 
 // --- sync thumbnail click ---

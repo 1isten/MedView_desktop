@@ -11,7 +11,7 @@ export const useParsingStore = defineStore('parsing', () => {
     },
   }) as Ref<Record<string, any>>;
 
-  async function parse(rootPaths: string[], deep = true, refresh = false) {
+  async function parse(rootPaths: string[], deep = true, cache = true, refresh = false) {
     if (parsing.value) {
       return 0;
     }
@@ -39,6 +39,7 @@ export const useParsingStore = defineStore('parsing', () => {
       body: {
         rootPaths,
         deep,
+        cache,
         refresh,
       },
       responseType: 'stream',
