@@ -394,7 +394,7 @@ router.post('/api/parse', defineEventHandler(async event => {
               if (rootPath) {
                 const db = await getParsingCacheDB(rootPath);
                 const cache = await db.select().from(parsingCache).where(eq(parsingCache.path, payload.path)).get();
-                // remove invalid cache
+                // remove outdated cache
                 if (cache && cache.key !== payload.key) {
                   await db.delete(parsingCache).where(eq(parsingCache.path, cache.path));
                 }
