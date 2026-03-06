@@ -200,12 +200,23 @@ const { onContextMenu } = useContextMenu('file-explorer-item', computed(() => [
 
   rightClickContext.value?.level === 1 && {
     label: 'Generate DICOMDIR…',
-    click: () => {
+    click: async () => {
+      if ('$electron' in window) {
+        const access = await $electron.pathExists(normalizePath(rightClickContext.value.path + '/' + 'DICOMDIR'));
+        if (access) {
+          if (!confirm('Replace existing DICOMDIR?')) {
+            return;
+          }
+        }
+      }
       const rootItem = findItem(rightClickContext.value.indexes);
       if (rootItem.expanded) {
         handleClickItem(rightClickContext.value, rightClickContext.value.index);
       }
-      generateRootDICOMDIR(rightClickContext.value.path).then(() => {
+      return generateRootDICOMDIR(rightClickContext.value.path).then(count => {
+        if (count === false) {
+          return;
+        }
         if (rootItem.expanded) {
           emit('folder:refresh', { folderItem: rootItem });
         } else {
@@ -214,6 +225,9 @@ const { onContextMenu } = useContextMenu('file-explorer-item', computed(() => [
           }
           handleClickItem(rightClickContext.value, rightClickContext.value.index);
         }
+        if (count === 0) {
+          return;
+        }
         setTimeout(() => {
           const item = items.value.find(item => item.level === 2 && item.name === 'DICOMDIR' && item.path.startsWith(rootItem.path));
           if (item) {
@@ -221,6 +235,7 @@ const { onContextMenu } = useContextMenu('file-explorer-item', computed(() => [
             handleClickItem(item, item.index);
           }
         }, 100);
+        console.log(count);
       });
     },
     enabled: !parsing.value,
