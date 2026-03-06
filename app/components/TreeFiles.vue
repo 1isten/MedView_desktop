@@ -35,7 +35,7 @@
         <template v-else>
           <UIcon :name="'i-mdi-file-document-outline'" class="shrink-0 relative size-5" />
         </template>
-        <span class="truncate">{{ item.name + (item.isDirectory ? '/' : '') }}</span>
+        <span class="truncate" :title="item.path">{{ item.name + (item.isDirectory ? '/' : '') }}</span>
         <span class="ms-auto me-3 inline-flex gap-1.5 items-center" v-if="item.isDirectory">
           <UIcon name="i-mdi-chevron-down" class="shrink-0 transform transition-transform duration-200 group-data-expanded:rotate-180 size-5" />
         </span>
@@ -198,7 +198,7 @@ const { onContextMenu } = useContextMenu('file-explorer-item', computed(() => [
 
   // ...
 
-  rightClickContext.value?.level === 1 && {
+  rightClickContext.value?.level === 1 && rightClickContext.value?.isDirectory && {
     label: 'Generate DICOMDIR…',
     click: async () => {
       if ('$electron' in window) {
