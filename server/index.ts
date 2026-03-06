@@ -157,9 +157,12 @@ router.post('/api/parse', defineEventHandler(async event => {
                 } else {
                   continue;
                 }
+                const ReferencedFileID = Array.isArray(currentImage.ReferencedFileID) ? currentImage.ReferencedFileID :
+                  typeof currentImage.ReferencedFileID === 'string' ? [currentImage.ReferencedFileID] : [currentImage.ReferencedFileID];
+
                 records.push({
-                  fileName: currentImage.ReferencedFileID.at(-1),
-                  filePath: normalizePath(join(dirname(fullPath), ...currentImage.ReferencedFileID)),
+                  fileName: ReferencedFileID.at(-1),
+                  filePath: normalizePath(join(dirname(fullPath), ...ReferencedFileID)),
                   record: {
                     _meta: dataset._meta,
                     PATIENT: currentPatient,
@@ -700,9 +703,28 @@ async function writeDICOMDIR(rootPath: string, payloads: any[]) {
       InstanceNumber: t.InstanceNumber ? `${t.InstanceNumber}` : '',
       filePath: normalizePath(relative(rootPath, p.path)),
     });
-    series.images.sort((a, b) => (parseInt(a.InstanceNumber) || 0) - (parseInt(b.InstanceNumber) || 0));
+  }
+  // Sort records for better interoperability with DICOM readers
+  for (const [, patient] of patients) {
+    for (const [, study] of patient.studies) {
+      for (const [, series] of study.series) {
+        series.images.sort((a, b) => (parseInt(a.InstanceNumber) || 0) - (parseInt(b.InstanceNumber) || 0));
+      }
+    }
   }
 
+  // Determine the dominant SpecificCharacterSet across all payloads for the dataset level
+  // const charsetCounts = new Map<string, number>();
+  // for (const p of payloads) {
+  //   const cs = (p.tags || {}).SpecificCharacterSet || 'ISO_IR 192';
+  //   charsetCounts.set(cs, (charsetCounts.get(cs) || 0) + 1);
+  // }
+  // let specificCharacterSet = 'ISO_IR 192';
+  // let maxCount = 0;
+  // for (const [cs, count] of charsetCounts) {
+  //   if (count > maxCount) { specificCharacterSet = cs; maxCount = count; }
+  // }
+  // ... but
   // dcmjs.DicomDict.write() always encodes text as UTF-8, so the generated
   // DICOMDIR must declare ISO_IR 192 (UTF-8) regardless of source file charsets.
   const specificCharacterSet = 'ISO_IR 192';
