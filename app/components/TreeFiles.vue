@@ -19,6 +19,7 @@
         :class="item.path === selectedItem ? 'text-white bg-elevated! hover:bg-accented/50!' : 'hover:bg-elevated/30!'"
         :style="{ height: '32px', paddingStart: `${16 * item.level}px` }"
         :data-expanded="item.expanded ? true : null"
+        :disabled="generatingDICOMDIR === item.path"
         :draggable="'true'"
         @dragstart="onDragStart($event, item, index)"
         @dragend="onDragEnd($event)"
@@ -28,7 +29,8 @@
         @contextmenu.prevent="handleRightClickItem($event, item)"
       >
         <template v-if="item.isDirectory">
-          <UIcon :name="item.expanded ? 'i-mdi-folder-open-outline' : 'i-mdi-folder-outline'" class="shrink-0 relative size-5" />
+          <UIcon v-if="generatingDICOMDIR === item.path" name="i-mdi-cog-clockwise" class="shrink-0 relative size-5 animate-spin" />
+          <UIcon v-else :name="item.expanded ? 'i-mdi-folder-open-outline' : 'i-mdi-folder-outline'" class="shrink-0 relative size-5" />
         </template>
         <template v-else>
           <UIcon :name="'i-mdi-file-document-outline'" class="shrink-0 relative size-5" />
@@ -67,8 +69,8 @@ const props = defineProps({
 const emit = defineEmits([
   'update:selected',
   'root:remove',
-  'folder:toggle',
   'folder:refresh',
+  'folder:toggle',
 ]);
 
 const items = computed(() => {
@@ -111,7 +113,7 @@ async function handleClickItem(_item, index, expanded) {
     if (expanded === null) {
       return;
     } else {
-      emit('folder:toggle', findItem(_item.indexes));
+      emit('folder:toggle', { folderItem: findItem(_item.indexes), expanded });
     }
   }
 }
@@ -196,17 +198,43 @@ const { onContextMenu } = useContextMenu('file-explorer-item', computed(() => [
 
   // ...
 
-  rightClickContext.value?.isDirectory && {
-    label: 'Refresh',
+  rightClickContext.value?.level === 1 && {
+    label: 'Generate DICOMDIR…',
     click: () => {
-      emit('folder:refresh', findItem(rightClickContext.value.indexes));
+      const rootItem = findItem(rightClickContext.value.indexes);
+      if (rootItem.expanded) {
+        handleClickItem(rightClickContext.value, rightClickContext.value.index);
+      }
+      generateRootDICOMDIR(rightClickContext.value.path).then(() => {
+        if (rootItem.expanded) {
+          emit('folder:refresh', { folderItem: rootItem });
+        } else {
+          if (rootItem.expanded === false) {
+            emit('folder:refresh', { folderItem: rootItem });
+          }
+          handleClickItem(rightClickContext.value, rightClickContext.value.index);
+        }
+        setTimeout(() => {
+          const item = items.value.find(item => item.level === 2 && item.name === 'DICOMDIR' && item.path.startsWith(rootItem.path));
+          if (item) {
+            scrollToItem(item.index);
+            handleClickItem(item, item.index);
+          }
+        }, 100);
+      });
     },
+    enabled: !parsing.value,
   },
   rightClickContext.value?.level === 1 && {
     label: 'Remove',
     click: () => {
-      // emit('root:remove', { rootItem: findItem(rightClickContext.value.indexes), clearCache: true });
-      emit('root:remove', findItem(rightClickContext.value.indexes));
+      emit('root:remove', { rootItem: findItem(rightClickContext.value.indexes) });
+    },
+  },
+  rightClickContext.value?.isDirectory && {
+    label: 'Refresh',
+    click: () => {
+      emit('folder:refresh', { folderItem: findItem(rightClickContext.value.indexes) });
     },
   },
   rightClickContext.value?.path && {
@@ -220,6 +248,9 @@ const { onContextMenu } = useContextMenu('file-explorer-item', computed(() => [
   },
 ]));
 async function handleRightClickItem(e, _item) {
+  if (generatingDICOMDIR.value === _item.path) {
+    return;
+  }
   emit('update:selected', _item.path);
   rightClickContext.value = _item;
   return onContextMenu(e);
@@ -355,6 +386,27 @@ onMounted(() => {
   }
 });
 
+const parsingStore = useParsingStore();
+const parsing = computed(() => parsingStore.parsing);
+const generatingDICOMDIR = ref(null);
+async function generateRootDICOMDIR(rootPath) {
+  if (parsing.value) {
+    return;
+  }
+  if (generatingDICOMDIR.value) {
+    return;
+  }
+  generatingDICOMDIR.value = rootPath;
+  return parsingStore.parse([rootPath], {
+    ignore: props.roots.map(root => root.path).filter(path => path !== rootPath),
+    cache: true,
+    refresh: true,
+    DICOMDIR: true,
+  }).finally(() => {
+    generatingDICOMDIR.value = null;
+  });
+}
+
 const refreshing = ref(false);
 watch(() => props.refreshedAt, async (refreshed) => {
   if (typeof $electron === 'undefined') {
@@ -373,11 +425,11 @@ watch(() => props.refreshedAt, async (refreshed) => {
         continue;
       }
       if (rootItem.isDirectory) {
-        emit('folder:refresh', rootItem);
+        emit('folder:refresh', { folderItem: rootItem });
       }
     }
     while (removedRoots.length > 0) {
-      emit('root:remove', removedRoots.pop());
+      emit('root:remove', { rootItem: removedRoots.pop() });
     }
   }
   await new Promise(resolve => setTimeout(resolve, 1000));

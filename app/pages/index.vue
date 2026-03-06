@@ -73,8 +73,8 @@
             :selected-item="selectedTreeItem"
             @update:selected="selectedTreeItem = $event"
             @root:remove="removeRoot($event)"
-            @folder:toggle="toggleFolder($event)"
             @folder:refresh="refreshFolder($event)"
+            @folder:toggle="toggleFolder($event)"
             @userselectfiles="loadUserSelectedFiles"
             style="height: calc(100% - 56px - 1px)"
           />
@@ -321,7 +321,7 @@ async function addRoots(fullPaths = []) {
       return;
     }
     while (childRoots.length > 0) {
-      removeRoot(childRoots.pop());
+      removeRoot({ rootItem: childRoots.pop() });
     }
     roots.value.push(item);
   });
@@ -334,9 +334,8 @@ async function addRoots(fullPaths = []) {
     ...recentRoots.value.files.filter(fullPath => !fullPaths.includes(fullPath)),
   ];
 }
-function removeRoot(rootItem) {
-  if (rootItem.rootItem && rootItem.clearCache) {
-    rootItem = rootItem.rootItem;
+function removeRoot({ rootItem, clearCache }) {
+  if (clearCache) {
     clearRootCache([rootItem.path]);
   }
   const rootIndex = roots.value.findIndex(item => item.path === rootItem.path);
@@ -345,8 +344,12 @@ function removeRoot(rootItem) {
     selectedFileOrFolderPath.value = null;
   }
 }
+function refreshFolder({ folderItem }) {
+  folderItem.children = [];
+  toggleFolder({ folderItem, expanded: folderItem.expanded ? true : false });
+}
 
-async function toggleFolder(folderItem, expanded) {
+async function toggleFolder({ folderItem, expanded }) {
   if (typeof $electron === 'undefined') {
     return;
   }
@@ -361,10 +364,6 @@ async function toggleFolder(folderItem, expanded) {
       ];
     }
   }
-}
-function refreshFolder(folderItem) {
-  folderItem.children = [];
-  toggleFolder(folderItem, folderItem.expanded ? true : false);
 }
 
 const refreshedAt = ref(0);
@@ -408,7 +407,7 @@ onMounted(async () => {
       nextTick(() => {
         const rootItem = roots.value.find(root => root.path === openFrom.value.path);
         if (rootItem) {
-          toggleFolder(rootItem, true);
+          toggleFolder({ folderItem: rootItem, expanded: true });
         }
       });
     }
