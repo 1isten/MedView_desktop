@@ -56,7 +56,7 @@ router.post('/api/parse', defineEventHandler(async event => {
   const useCache = typeof body.cache === 'boolean' ? body.cache : true;
   const refreshCache = useCache === false ? false : !!body.refresh;
 
-  const filesInDICOMDIR: Record<string, boolean> = Object.create(null);
+  const fileRecordedInDICOMDIR: Record<string, boolean> = Object.create(null);
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -118,43 +118,57 @@ router.post('/api/parse', defineEventHandler(async event => {
               const dataset = dcmjs.data.DicomMetaDictionary.naturalizeDataset(DicomDict.dict);
               dataset._meta = dcmjs.data.DicomMetaDictionary.namifyDataset(DicomDict.meta);
               // return controller.enqueue(encode({ type: 'DICOMDIR', dataset }));
-              const record = {
-                _meta: dataset._meta,
-                PATIENT: {} as Record<string, any>,
-                STUDY: {} as Record<string, any>,
-                SERIES: {} as Record<string, any>,
-                IMAGE: {} as Record<string, any>,
-              };
+              let currentPatient: Record<string, any> = {};
+              let currentStudy: Record<string, any> = {};
+              let currentSeries: Record<string, any> = {};
+              let currentImage: Record<string, any> = {};
+              const records = [] as {
+                fileName: string;
+                filePath: string;
+                record: Record<string, any>;
+              }[];
               const DirectoryRecordSequence = dataset.DirectoryRecordSequence || [];
               for (let s = 0; s < DirectoryRecordSequence.length; s++) {
                 const seq = DirectoryRecordSequence[s];
                 if (seq.DirectoryRecordType?.toUpperCase() === 'PATIENT') {
-                  record.PATIENT = seq;
-                  record.STUDY = {};
-                  record.SERIES = {};
-                  record.IMAGE = {};
+                  currentPatient = seq;
+                  currentStudy = {};
+                  currentSeries = {};
+                  currentImage = {};
                   continue;
                 }
                 if (seq.DirectoryRecordType?.toUpperCase() === 'STUDY') {
-                  record.STUDY = seq;
-                  record.SERIES = {};
-                  record.IMAGE = {};
+                  currentStudy = seq;
+                  currentSeries = {};
+                  currentImage = {};
                   continue;
                 }
                 if (seq.DirectoryRecordType?.toUpperCase() === 'SERIES') {
-                  record.SERIES = seq;
-                  record.IMAGE = {};
+                  currentSeries = seq;
+                  currentImage = {};
                   continue;
                 }
                 if (seq.DirectoryRecordType?.toUpperCase() === 'IMAGE' && !!seq.ReferencedFileID?.length) {
-                  record.IMAGE = seq;
+                  currentImage = seq;
                 } else {
                   continue;
                 }
-                let fileName = seq.ReferencedFileID.at(-1);
-                let filePath = normalizePath(join(dirname(fullPath), ...seq.ReferencedFileID));
-                if (!existsSync(filePath)) {
-                  if (fileName.slice(fileName.length - 4).toLowerCase() === '.dcm') {
+                records.push({
+                  fileName: currentImage.ReferencedFileID.at(-1),
+                  filePath: normalizePath(join(dirname(fullPath), ...currentImage.ReferencedFileID)),
+                  record: {
+                    _meta: dataset._meta,
+                    PATIENT: currentPatient,
+                    STUDY: currentStudy,
+                    SERIES: currentSeries,
+                    IMAGE: currentImage,
+                  },
+                });
+              }
+              await Promise.all(records.map(async ({ fileName, filePath, record }) => {
+                const access = await pathExists(filePath);
+                if (!access) {
+                  if (fileName.slice(-4).toLowerCase() === '.dcm') {
                     fileName = fileName.slice(0, -4);
                     filePath = filePath.slice(0, -4);
                   } else {
@@ -164,10 +178,9 @@ router.post('/api/parse', defineEventHandler(async event => {
                 }
                 let fileStat = await stat(filePath).catch(() => {});
                 if (fileStat && fileStat.isFile()) {
-                  filesInDICOMDIR[filePath] = true;
                   await limit(() => handleFile(fileName!, filePath, fileStat!.size, fileStat!.mtimeMs, rootPath === '*' ? dirname(fullPath) : rootPath, record));
                 }
-              }
+              }));
             } catch (err) {
               console.error('cannot parse DICOMDIR', fullPath, err);
             }
@@ -191,7 +204,7 @@ router.post('/api/parse', defineEventHandler(async event => {
           ) {
             return;
           }
-          if (filesInDICOMDIR[filePath] && !record) {
+          if (fileRecordedInDICOMDIR[filePath] && !record) {
             return; // already handled in DICOMDIR
           }
           const type = extname(fileName).toLowerCase();
@@ -213,6 +226,7 @@ router.post('/api/parse', defineEventHandler(async event => {
                   const payload = {
                     ...cache,
                   };
+                  if (record) fileRecordedInDICOMDIR[filePath] = true;
                   controller.enqueue(encode(payload));
                   return; // hit cache
                 }
@@ -244,6 +258,7 @@ router.post('/api/parse', defineEventHandler(async event => {
               // may collect more tags
               // ...
 
+              // use record from DICOMDIR
               if (
                 record?._meta &&
                 record.PATIENT &&
@@ -416,6 +431,7 @@ router.post('/api/parse', defineEventHandler(async event => {
                 });
               }
 
+              if (record) fileRecordedInDICOMDIR[filePath] = true;
               controller.enqueue(encode(payload));
             } catch (err) {
               console.error('cannot parse', filePath, err);
