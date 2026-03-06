@@ -1,8 +1,8 @@
 import { createApp, createRouter, defineEventHandler, serveStatic, getQuery, readBody, setResponseHeader, sendStream, toWebHandler } from 'h3';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, rmSync, type Stats } from 'node:fs';
-import { stat, lstat, readdir, readFile } from 'node:fs/promises';
-import { dirname, basename, extname, join } from 'node:path';
+import { stat, lstat, readdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, basename, extname, join, relative } from 'node:path';
 import { normalizePath } from './utils/path';
 import { pathExists } from './utils/fs';
 
@@ -55,7 +55,11 @@ router.post('/api/parse', defineEventHandler(async event => {
   // const deep = !!body.deep;
   const useCache = typeof body.cache === 'boolean' ? body.cache : true;
   const refreshCache = useCache === false ? false : !!body.refresh;
+  const generateRootDICOMDIR = !!body.DICOMDIR;
 
+  // write DICOMDIR record
+  const payloadRecordedForRootDICOMDIR = new Map<string, any[]>();
+  // read DICOMDIR record
   const fileRecordedInDICOMDIR: Record<string, boolean> = Object.create(null);
 
   const stream = new ReadableStream({
@@ -110,7 +114,7 @@ router.post('/api/parse', defineEventHandler(async event => {
               folders.push({ fullPath });
             }
           }
-          // handle DICOMDIR(s) first
+          // read DICOMDIR(s) first
           await Promise.all(DICOMDIRs.map(async ({ fullPath, fileName, fileStat }) => {
             try {
               const buffer = await readFile(fullPath);
@@ -460,6 +464,14 @@ router.post('/api/parse', defineEventHandler(async event => {
                 });
               }
 
+              // write DICOMDIR preparation
+              if (generateRootDICOMDIR && rootPath) {
+                if (!payloadRecordedForRootDICOMDIR.has(rootPath)) {
+                  payloadRecordedForRootDICOMDIR.set(rootPath, []);
+                }
+                payloadRecordedForRootDICOMDIR.get(rootPath)!.push(payload);
+              }
+
               if (record) fileRecordedInDICOMDIR[filePath] = true;
               controller.enqueue(encode(payload));
             } catch (err) {
@@ -468,6 +480,19 @@ router.post('/api/parse', defineEventHandler(async event => {
           } else {
             // TODO: support more file types
             // ...
+          }
+        }
+        // write DICOMDIR
+        if (generateRootDICOMDIR) {
+          for (const [rootPath, payloads] of payloadRecordedForRootDICOMDIR) {
+            try {
+              const DICOMDIR = await writeDICOMDIR(rootPath, payloads);
+              if (DICOMDIR) {
+                controller.enqueue(encode({ type: 'DICOMDIR', output: DICOMDIR }));
+              }
+            } catch (err) {
+              console.error('cannot write DICOMDIR for', rootPath, err);
+            }
           }
         }
       } catch (err) {
@@ -590,3 +615,364 @@ app.use(router);
 export const handler = toWebHandler(app);
 
 export default handler;
+
+// ---
+
+// helper to create DICOMDIR file (written by AI)
+async function writeDICOMDIR(rootPath: string, payloads: any[]) {
+  if (!payloads.length) return;
+
+  const outputDICOMDIR = join(rootPath, 'DICOMDIR');
+
+  // Group payloads into Patient > Study > Series > Image hierarchy
+  const patients = new Map<string, {
+    PatientName: string;
+    PatientID: string;
+    studies: Map<string, {
+      StudyInstanceUID: string;
+      StudyDescription: string;
+      StudyID: string;
+      StudyDate: string;
+      StudyTime: string;
+      AccessionNumber: string;
+      series: Map<string, {
+        SeriesInstanceUID: string;
+        SeriesDescription: string;
+        Modality: string;
+        SeriesNumber: string;
+        images: {
+          SOPInstanceUID: string;
+          SOPClassUID: string;
+          ReferencedSOPClassUIDInFile: string;
+          ReferencedSOPInstanceUIDInFile: string;
+          ReferencedTransferSyntaxUIDInFile: string;
+          InstanceNumber: string;
+          filePath: string;
+        }[];
+      }>;
+    }>;
+  }>();
+
+  for (const p of payloads) {
+    const t = p.tags || {};
+    const patientKey = t.PatientID || t.PatientName || 'Anonymous';
+    if (!patients.has(patientKey)) {
+      patients.set(patientKey, {
+        PatientName: t.PatientName || '',
+        PatientID: t.PatientID || '',
+        studies: new Map(),
+      });
+    }
+    const patient = patients.get(patientKey)!;
+
+    const studyKey = t.StudyInstanceUID || t.StudyDescription || t.StudyID || 'Unknown Study';
+    if (!patient.studies.has(studyKey)) {
+      patient.studies.set(studyKey, {
+        StudyInstanceUID: t.StudyInstanceUID || '',
+        StudyDescription: t.StudyDescription || '',
+        StudyID: t.StudyID || '',
+        StudyDate: t.StudyDate || '',
+        StudyTime: t.StudyTime || '',
+        AccessionNumber: t.AccessionNumber || '',
+        series: new Map(),
+      });
+    }
+    const study = patient.studies.get(studyKey)!;
+
+    const seriesKey = t.SeriesInstanceUID || t.SeriesDescription || 'Unknown Series';
+    if (!study.series.has(seriesKey)) {
+      study.series.set(seriesKey, {
+        SeriesInstanceUID: t.SeriesInstanceUID || '',
+        SeriesDescription: t.SeriesDescription || '',
+        Modality: t.Modality || '',
+        SeriesNumber: t.SeriesNumber ? `${t.SeriesNumber}` : '',
+        images: [],
+      });
+    }
+    const series = study.series.get(seriesKey)!;
+
+    series.images.push({
+      SOPInstanceUID: t.SOPInstanceUID || '',
+      SOPClassUID: t.SOPClassUID || '',
+      ReferencedSOPClassUIDInFile: t.ReferencedSOPClassUIDInFile || t.SOPClassUID || '',
+      ReferencedSOPInstanceUIDInFile: t.ReferencedSOPInstanceUIDInFile || t.SOPInstanceUID || '',
+      ReferencedTransferSyntaxUIDInFile: t.ReferencedTransferSyntaxUIDInFile || t.TransferSyntaxUID || '',
+      InstanceNumber: t.InstanceNumber ? `${t.InstanceNumber}` : '',
+      filePath: normalizePath(relative(rootPath, p.path)),
+    });
+    series.images.sort((a, b) => (parseInt(a.InstanceNumber) || 0) - (parseInt(b.InstanceNumber) || 0));
+  }
+
+  // dcmjs.DicomDict.write() always encodes text as UTF-8, so the generated
+  // DICOMDIR must declare ISO_IR 192 (UTF-8) regardless of source file charsets.
+  const specificCharacterSet = 'ISO_IR 192';
+
+  // Build the DirectoryRecordSequence as DICOM JSON (un-naturalized) records
+  // Include offset placeholder tags (0004,1400 and 0004,1420) — required by the standard
+  const directoryRecords: Record<string, any>[] = [];
+  // Track hierarchy for offset computation
+  const firstChildIdx: number[] = [];
+  const nextSiblingIdx: number[] = [];
+  const patientIndices: number[] = [];
+
+  for (const [, patient] of patients) {
+    const patientIdx = directoryRecords.length;
+    patientIndices.push(patientIdx);
+
+    // PATIENT record
+    directoryRecords.push({
+      '00041400': { vr: 'UL', Value: [0] },                                               // OffsetOfTheNextDirectoryRecord
+      '00041410': { vr: 'US', Value: [0xFFFF] },                                          // RecordInUseFlag
+      '00041420': { vr: 'UL', Value: [0] },                                               // OffsetOfReferencedLowerLevelDirectoryEntity
+      '00041430': { vr: 'CS', Value: ['PATIENT'] },                                       // DirectoryRecordType
+      '00080005': { vr: 'CS', Value: [specificCharacterSet] },                            // SpecificCharacterSet
+      '00100010': { vr: 'PN', Value: [{ Alphabetic: patient.PatientName }] },             // PatientName
+      '00100020': { vr: 'LO', Value: [patient.PatientID] },                               // PatientID
+    });
+    firstChildIdx.push(-1);
+    nextSiblingIdx.push(-1);
+
+    const studyIndices: number[] = [];
+
+    for (const [, study] of patient.studies) {
+      const studyIdx = directoryRecords.length;
+      studyIndices.push(studyIdx);
+
+      // STUDY record
+      directoryRecords.push({
+        '00041400': { vr: 'UL', Value: [0] },
+        '00041410': { vr: 'US', Value: [0xFFFF] },
+        '00041420': { vr: 'UL', Value: [0] },
+        '00041430': { vr: 'CS', Value: ['STUDY'] },
+        '00080005': { vr: 'CS', Value: [specificCharacterSet] },
+        '0020000D': { vr: 'UI', Value: [study.StudyInstanceUID] },                        // StudyInstanceUID
+        '00081030': { vr: 'LO', Value: [study.StudyDescription] },                        // StudyDescription
+        '00200010': { vr: 'SH', Value: [study.StudyID] },                                 // StudyID
+        '00080020': { vr: 'DA', Value: [study.StudyDate] },                               // StudyDate
+        '00080030': { vr: 'TM', Value: [study.StudyTime] },                               // StudyTime
+        '00080050': { vr: 'SH', Value: [study.AccessionNumber] },                         // AccessionNumber
+      });
+      firstChildIdx.push(-1);
+      nextSiblingIdx.push(-1);
+
+      const seriesIndices: number[] = [];
+
+      const sortedSeries = [...study.series.values()].sort((a, b) => (parseInt(a.SeriesNumber) || 0) - (parseInt(b.SeriesNumber) || 0));
+      for (const series of sortedSeries) {
+        const seriesIdx = directoryRecords.length;
+        seriesIndices.push(seriesIdx);
+
+        // SERIES record
+        directoryRecords.push({
+          '00041400': { vr: 'UL', Value: [0] },
+          '00041410': { vr: 'US', Value: [0xFFFF] },
+          '00041420': { vr: 'UL', Value: [0] },
+          '00041430': { vr: 'CS', Value: ['SERIES'] },
+          '0020000E': { vr: 'UI', Value: [series.SeriesInstanceUID] },                    // SeriesInstanceUID
+          '0008103E': { vr: 'LO', Value: [series.SeriesDescription] },                    // SeriesDescription
+          '00080060': { vr: 'CS', Value: [series.Modality] },                             // Modality
+          '00200011': { vr: 'IS', Value: [series.SeriesNumber] },                         // SeriesNumber
+        });
+        firstChildIdx.push(-1);
+        nextSiblingIdx.push(-1);
+
+        const imageIndices: number[] = [];
+
+        for (const image of series.images) {
+          const imageIdx = directoryRecords.length;
+          imageIndices.push(imageIdx);
+
+          // IMAGE record
+          const fileIDParts = image.filePath.split('/');
+          // if (fileIDParts[fileIDParts.length - 1].slice(-4)?.toLowerCase() === '.dcm') fileIDParts[fileIDParts.length - 1] = fileIDParts[fileIDParts.length - 1].slice(0, -4);
+          directoryRecords.push({
+            '00041400': { vr: 'UL', Value: [0] },
+            '00041410': { vr: 'US', Value: [0xFFFF] },
+            '00041420': { vr: 'UL', Value: [0] },
+            '00041430': { vr: 'CS', Value: ['IMAGE'] },
+            '00041500': { vr: 'CS', Value: fileIDParts },                                 // ReferencedFileID
+            '00041510': { vr: 'UI', Value: [image.ReferencedSOPClassUIDInFile] },         // ReferencedSOPClassUIDInFile
+            '00041511': { vr: 'UI', Value: [image.ReferencedSOPInstanceUIDInFile] },      // ReferencedSOPInstanceUIDInFile
+            '00041512': { vr: 'UI', Value: [image.ReferencedTransferSyntaxUIDInFile] },   // ReferencedTransferSyntaxUIDInFile
+            '00080018': { vr: 'UI', Value: [image.SOPInstanceUID] },                      // SOPInstanceUID
+            '00080016': { vr: 'UI', Value: [image.SOPClassUID] },                         // SOPClassUID
+            '00200013': { vr: 'IS', Value: [image.InstanceNumber] },                      // InstanceNumber
+          });
+          firstChildIdx.push(-1);
+          nextSiblingIdx.push(-1);
+        }
+
+        // Link image siblings
+        for (let i = 0; i < imageIndices.length - 1; i++) {
+          nextSiblingIdx[imageIndices[i]] = imageIndices[i + 1];
+        }
+        // Series -> first image
+        if (imageIndices.length > 0) {
+          firstChildIdx[seriesIdx] = imageIndices[0];
+        }
+      }
+
+      // Link series siblings
+      for (let i = 0; i < seriesIndices.length - 1; i++) {
+        nextSiblingIdx[seriesIndices[i]] = seriesIndices[i + 1];
+      }
+      // Study -> first series
+      if (seriesIndices.length > 0) {
+        firstChildIdx[studyIdx] = seriesIndices[0];
+      }
+    }
+
+    // Link study siblings
+    for (let i = 0; i < studyIndices.length - 1; i++) {
+      nextSiblingIdx[studyIndices[i]] = studyIndices[i + 1];
+    }
+    // Patient -> first study
+    if (studyIndices.length > 0) {
+      firstChildIdx[patientIdx] = studyIndices[0];
+    }
+  }
+
+  // Link patient siblings
+  for (let i = 0; i < patientIndices.length - 1; i++) {
+    nextSiblingIdx[patientIndices[i]] = patientIndices[i + 1];
+  }
+
+  // Free hierarchy memory — no longer needed after building records
+  patients.clear();
+
+  // Build the DICOM dictionary dataset
+  const meta: Record<string, any> = {
+    '00020001': { vr: 'OB', Value: [new Uint8Array([0x00, 0x01]).buffer] },               // FileMetaInformationVersion
+    '00020002': { vr: 'UI', Value: ['1.2.840.10008.1.3.10'] },                            // MediaStorageSOPClassUID
+    '00020003': { vr: 'UI', Value: [dcmjs.data.DicomMetaDictionary.uid()] },              // MediaStorageSOPInstanceUID
+    '00020010': { vr: 'UI', Value: ['1.2.840.10008.1.2.1'] },                             // TransferSyntaxUID
+    '00020012': { vr: 'UI', Value: ['1.2.826.0.1.3680043.8.1055.1'] },                    // ImplementationClassUID
+    '00020013': { vr: 'SH', Value: ['PMTaro'] },                                          // ImplementationVersionName
+  };
+
+  const dataset: Record<string, any> = {
+    '00080005': { vr: 'CS', Value: [specificCharacterSet] },
+    '00041130': { vr: 'CS', Value: [''] },                                                // FileSetID
+    '00041200': { vr: 'UL', Value: [0] },                                                 // OffsetOfTheFirstDirectoryRecordOfTheRootDirectoryEntity
+    '00041202': { vr: 'UL', Value: [0] },                                                 // OffsetOfTheLastDirectoryRecordOfTheRootDirectoryEntity
+    '00041212': { vr: 'US', Value: [0x0000] },                                            // FileSetConsistencyFlag
+    '00041220': { vr: 'SQ', Value: directoryRecords },                                    // DirectoryRecordSequence
+  };
+
+  const DicomDict = new dcmjs.data.DicomDict(meta);
+  DicomDict.dict = dataset;
+
+  // Write with placeholder offsets
+  const arrayBuffer = DicomDict.write({ allowInvalidVRLength: true });
+  const buf = Buffer.from(arrayBuffer);
+
+  // Single-pass structure-aware binary offset patching
+  // Explicit VR Little Endian layout:
+  // UL tag: group(2 LE) + element(2 LE) + "UL"(2) + length(2 LE) + value(4 LE) = 12 bytes, value at +8
+  // SQ tag: group(2 LE) + element(2 LE) + "SQ"(2) + reserved(2) + length(4 LE) = 12 bytes, items at +12
+  // Item: FFFE,E000 + length(4 LE) = 8 bytes
+
+  // Locate (0004,1220) DirectoryRecordSequence in the dataset-level region
+  let sqTagPos = -1;
+  for (let i = 0; i <= buf.length - 12; i++) {
+    if (buf[i] === 0x04 && buf[i + 1] === 0x00 && buf[i + 2] === 0x20 && buf[i + 3] === 0x12 &&
+        buf[i + 4] === 0x53 && buf[i + 5] === 0x51) { // (0004,1220) SQ
+      sqTagPos = i;
+      break;
+    }
+  }
+  if (sqTagPos === -1) {
+    console.error('DICOMDIR offset patch: SQ tag (0004,1220) not found');
+    await writeFile(outputDICOMDIR, buf);
+    return;
+  }
+  const sqItemsStart = sqTagPos + 12; // skip tag(4) + VR(2) + reserved(2) + length(4)
+
+  // Determine SQ end: check if length is defined or undefined (0xFFFFFFFF)
+  const sqLength = buf.readUInt32LE(sqTagPos + 8);
+  let sqEnd: number;
+  if (sqLength !== 0xFFFFFFFF) {
+    // Defined length — use it directly
+    sqEnd = sqItemsStart + sqLength;
+  } else {
+    // Undefined length — find the last Sequence Delimitation Item (FFFE,E0DD)
+    // Scanning backward avoids accidentally picking a nested SQ delimiter
+    sqEnd = buf.length;
+    for (let i = buf.length - 4; i >= sqItemsStart; i--) {
+      if (buf[i] === 0xFE && buf[i + 1] === 0xFF && buf[i + 2] === 0xDD && buf[i + 3] === 0xE0) {
+        sqEnd = i;
+        break;
+      }
+    }
+  }
+
+  // Single pass through the SQ region: collect Item positions, (0004,1400) and (0004,1420)
+  const itemPositions: number[] = [];
+  const tag1400Pos: number[] = [];
+  const tag1420Pos: number[] = [];
+  for (let i = sqItemsStart; i <= sqEnd - 4; i++) {
+    const b0 = buf[i], b1 = buf[i + 1], b2 = buf[i + 2], b3 = buf[i + 3];
+    // Item tag: FFFE,E000
+    if (b0 === 0xFE && b1 === 0xFF && b2 === 0x00 && b3 === 0xE0) {
+      itemPositions.push(i);
+      continue;
+    }
+    // Group 0004 UL tags with length=4
+    if (b0 === 0x04 && b1 === 0x00 && i <= sqEnd - 8 &&
+        buf[i + 4] === 0x55 && buf[i + 5] === 0x4C && buf[i + 6] === 0x04 && buf[i + 7] === 0x00) {
+      if (b2 === 0x00 && b3 === 0x14) { tag1400Pos.push(i); continue; } // (0004,1400)
+      if (b2 === 0x20 && b3 === 0x14) { tag1420Pos.push(i); continue; } // (0004,1420)
+    }
+  }
+
+  if (itemPositions.length !== directoryRecords.length) {
+    console.error('DICOMDIR offset patch: expected', directoryRecords.length, 'items, found', itemPositions.length);
+    await writeFile(outputDICOMDIR, buf);
+    return;
+  }
+  if (tag1400Pos.length !== directoryRecords.length || tag1420Pos.length !== directoryRecords.length) {
+    console.error('DICOMDIR offset patch: offset tag count mismatch (1400:', tag1400Pos.length, '1420:', tag1420Pos.length, 'expected:', directoryRecords.length, ')');
+    await writeFile(outputDICOMDIR, buf);
+    return;
+  }
+
+  // Validate: each offset tag must fall within its expected item's byte range
+  for (let i = 0; i < directoryRecords.length; i++) {
+    const itemStart = itemPositions[i];
+    const itemEnd = i + 1 < itemPositions.length ? itemPositions[i + 1] : sqEnd;
+    if (tag1400Pos[i] < itemStart || tag1400Pos[i] >= itemEnd ||
+        tag1420Pos[i] < itemStart || tag1420Pos[i] >= itemEnd) {
+      console.error('DICOMDIR offset patch: offset tag position out of item bounds at record', i);
+      await writeFile(outputDICOMDIR, buf);
+      return;
+    }
+  }
+
+  // Patch each record's (0004,1400) and (0004,1420) with correct byte offsets
+  for (let i = 0; i < directoryRecords.length; i++) {
+    const nextSibling = nextSiblingIdx[i];
+    const firstChild = firstChildIdx[i];
+    buf.writeUInt32LE(nextSibling >= 0 ? itemPositions[nextSibling] : 0, tag1400Pos[i] + 8);
+    buf.writeUInt32LE(firstChild >= 0 ? itemPositions[firstChild] : 0, tag1420Pos[i] + 8);
+  }
+
+  // Patch root-level (0004,1200) and (0004,1202) — scan only the region before the SQ tag
+  let tag1200Offset = -1;
+  let tag1202Offset = -1;
+  for (let i = 0; i <= sqTagPos - 8; i++) {
+    if (buf[i] === 0x04 && buf[i + 1] === 0x00 &&
+        buf[i + 4] === 0x55 && buf[i + 5] === 0x4C && buf[i + 6] === 0x04 && buf[i + 7] === 0x00) {
+      if (buf[i + 2] === 0x00 && buf[i + 3] === 0x12) tag1200Offset = i; // (0004,1200)
+      if (buf[i + 2] === 0x02 && buf[i + 3] === 0x12) tag1202Offset = i; // (0004,1202)
+    }
+  }
+  if (tag1200Offset >= 0 && patientIndices.length > 0) {
+    buf.writeUInt32LE(itemPositions[patientIndices[0]], tag1200Offset + 8);
+  }
+  if (tag1202Offset >= 0 && patientIndices.length > 0) {
+    buf.writeUInt32LE(itemPositions[patientIndices[patientIndices.length - 1]], tag1202Offset + 8);
+  }
+
+  await writeFile(outputDICOMDIR, buf);  
+  return outputDICOMDIR;
+}

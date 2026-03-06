@@ -326,8 +326,8 @@ onMounted(() => {
   }
 });
 
-async function parse({ cache = true, refresh = false } = {}) {
-  const count = await parsingStore.parse(rootPaths.value, true, cache, refresh);
+async function parse({ cache = true, refresh = false, DICOMDIR } = {}) {
+  const count = await parsingStore.parse(rootPaths.value, true, cache, refresh, DICOMDIR);
   console.log(count, { data, items, pathToKeys: parsedItemsPathMap.value, $scrollToItem: scrollToItem });
   if (openFromPath.value && !openFromHandled.value) {
     nextTick(() => {
