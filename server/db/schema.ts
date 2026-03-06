@@ -1,6 +1,8 @@
 import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
-export const parsingCache = sqliteTable('parsing', {
+export const DB_CACHE_PARSING_TABLE_NAME = 'parsing';
+
+export const parsingCache = sqliteTable(DB_CACHE_PARSING_TABLE_NAME, {
   key: text('key').primaryKey(), // path|size|mtime
 
   type: text('type').notNull(),
