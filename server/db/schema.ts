@@ -11,8 +11,9 @@ export const parsingCache = sqliteTable(DB_CACHE_PARSING_TABLE_NAME, {
   root: text('root').notNull(),
 
   tags: text('tags', { mode: 'json' }).$type<{
+    MediaStorageSOPClassUID?: string;
+    MediaStorageSOPInstanceUID?: string;
     TransferSyntaxUID?: string;
-    SOPClassUID?: string;
 
     // ...
 
@@ -24,12 +25,18 @@ export const parsingCache = sqliteTable(DB_CACHE_PARSING_TABLE_NAME, {
     StudyID?: string;
     StudyDate?: string;
     StudyTime?: string;
+    AccessionNumber?: string;
 
     SeriesInstanceUID?: string;
     SeriesDescription?: string;
+    Modality?: string;
     SeriesNumber?: string;
 
     SOPInstanceUID?: string;
+    SOPClassUID?: string;
+    ReferencedSOPClassUIDInFile?: string;
+    ReferencedSOPInstanceUIDInFile?: string;
+    ReferencedTransferSyntaxUIDInFile?: string;
     InstanceNumber?: string;
   }>(),
 
