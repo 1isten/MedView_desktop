@@ -25,6 +25,7 @@
         @dragend="onDragEnd($event)"
         @keydown="handleKeyPressedItem($event, item, index)"
         @click.prevent="handleClickItem(item, index)"
+        @dblclick.prevent.stop
         @contextmenu.prevent="handleRightClickItem($event, item)"
       >
         <UIcon :name="item.icon" class="shrink-0 relative size-5" />
@@ -326,8 +327,16 @@ onMounted(() => {
   }
 });
 
-async function parse({ cache = true, refresh = false, DICOMDIR } = {}) {
-  const count = await parsingStore.parse(rootPaths.value, true, cache, refresh, DICOMDIR);
+async function parse({
+  cache = true,
+  refresh = false,
+  DICOMDIR,
+} = {}) {
+  const count = await parsingStore.parse(rootPaths.value, {
+    cache,
+    refresh,
+    DICOMDIR,
+  });
   console.log(count, { data, items, pathToKeys: parsedItemsPathMap.value, $scrollToItem: scrollToItem });
   if (openFromPath.value && !openFromHandled.value) {
     nextTick(() => {

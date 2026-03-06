@@ -11,7 +11,13 @@ export const useParsingStore = defineStore('parsing', () => {
     },
   }) as Ref<Record<string, any>>;
 
-  async function parse(rootPaths: string[], deep = true, cache = true, refresh = false, DICOMDIR = false) {
+  async function parse(rootPaths: string[], options = {
+    ignore: [] as string[],
+    deep: true,
+    cache: true,
+    refresh: false,
+    DICOMDIR: false,
+  }) {
     if (parsing.value) {
       return 0;
     }
@@ -19,7 +25,9 @@ export const useParsingStore = defineStore('parsing', () => {
     if (rootPaths.length > 0) {
       Object.keys(parsedData.value.patients).forEach((patientKey) => {
         const patientItem = parsedData.value.patients[patientKey];
-        if (!rootPaths.includes(patientItem.root)) {
+        if (!!options.ignore?.includes(patientItem.root)) {
+          return; // skip
+        } else if (!rootPaths.includes(patientItem.root)) {
           delete parsedData.value.patients[patientKey];
           const patientIndex = parsedData.value.patientsInOrder?.findIndex((item: any) => item.key === patientKey) ?? -1;
           if (patientIndex !== -1) {
@@ -38,10 +46,10 @@ export const useParsingStore = defineStore('parsing', () => {
       method: 'POST',
       body: {
         rootPaths,
-        deep,
-        cache,
-        refresh,
-        DICOMDIR: typeof DICOMDIR === 'boolean' ? DICOMDIR : undefined,
+        deep: options.deep,
+        cache: options.cache,
+        refresh: options.refresh,
+        DICOMDIR: typeof options.DICOMDIR === 'boolean' ? options.DICOMDIR : undefined,
       },
       responseType: 'stream',
     });
