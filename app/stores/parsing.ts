@@ -53,8 +53,9 @@ export const useParsingStore = defineStore('parsing', () => {
       if (chunk?.type === 'application/dicom') {
         const { name: fileName, path: filePath, root: rootPath } = chunk;
         const {
+          MediaStorageSOPClassUID,
+          MediaStorageSOPInstanceUID,
           TransferSyntaxUID,
-          SOPClassUID,
 
           // ...
 
@@ -66,12 +67,18 @@ export const useParsingStore = defineStore('parsing', () => {
           StudyID,
           StudyDate,
           StudyTime,
+          AccessionNumber,
 
           SeriesInstanceUID,
           SeriesDescription,
+          Modality,
           SeriesNumber,
 
           SOPInstanceUID,
+          SOPClassUID,
+          ReferencedSOPClassUIDInFile,
+          ReferencedSOPInstanceUIDInFile,
+          ReferencedTransferSyntaxUIDInFile,
           InstanceNumber,
         } = chunk.tags;
 
@@ -105,6 +112,7 @@ export const useParsingStore = defineStore('parsing', () => {
               StudyID,
               StudyDate,
               StudyTime,
+              AccessionNumber,
               series: {},
             };
             if (!patient.studiesInOrder) {
@@ -138,6 +146,7 @@ export const useParsingStore = defineStore('parsing', () => {
           if (!study.series[SeriesInstanceUID]) {
             study.series[SeriesInstanceUID] = {
               SeriesDescription,
+              Modality,
               SeriesNumber,
               instances: {},
             };

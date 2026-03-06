@@ -168,12 +168,13 @@ router.post('/api/parse', defineEventHandler(async event => {
               await Promise.all(records.map(async ({ fileName, filePath, record }) => {
                 const access = await pathExists(filePath);
                 if (!access) {
-                  if (fileName.slice(-4).toLowerCase() === '.dcm') {
-                    fileName = fileName.slice(0, -4);
-                    filePath = filePath.slice(0, -4);
-                  } else {
+                  // because standard DICOMDIR's ReferencedFileID typically contains file name in uppercase without extension
+                  if (fileName.slice(-4).toLowerCase() !== '.dcm') {
                     fileName += '.dcm';
                     filePath += '.dcm';
+                  } else {
+                    fileName = fileName.slice(0, -4);
+                    filePath = filePath.slice(0, -4);
                   }
                 }
                 let fileStat = await stat(filePath).catch(() => {});
@@ -234,26 +235,33 @@ router.post('/api/parse', defineEventHandler(async event => {
 
               // ...
 
-              let TransferSyntaxUID;
-              let SOPClassUID;
+              let MediaStorageSOPClassUID;            // 0002,0002
+              let MediaStorageSOPInstanceUID;         // 0002,0003
+              let TransferSyntaxUID;                  // 0002,0010
 
               // ...
 
-              let PatientName;
-              let PatientID;
+              let PatientName;                        // 0010,0010
+              let PatientID;                          // 0010,0020
 
-              let StudyInstanceUID;
-              let StudyDescription;
-              let StudyID;
-              let StudyDate;
-              let StudyTime;
+              let StudyInstanceUID;                   // 0020,000D
+              let StudyDescription;                   // 0008,1030
+              let StudyID;                            // 0020,0010
+              let StudyDate;                          // 0008,0020
+              let StudyTime;                          // 0008,0030
+              let AccessionNumber;                    // 0008,0050
 
-              let SeriesInstanceUID;
-              let SeriesDescription;
-              let SeriesNumber;
+              let SeriesInstanceUID;                  // 0020,000E
+              let SeriesDescription;                  // 0008,103E
+              let Modality;                           // 0008,0060
+              let SeriesNumber;                       // 0020,0011
 
-              let SOPInstanceUID;
-              let InstanceNumber;
+              let SOPInstanceUID;                     // 0008,0018
+              let SOPClassUID;                        // 0008,0016
+              let ReferencedSOPClassUIDInFile;        // 0004,1510
+              let ReferencedSOPInstanceUIDInFile;     // 0004,1511
+              let ReferencedTransferSyntaxUIDInFile;  // 0004,1512
+              let InstanceNumber;                     // 0020,0013
 
               // may collect more tags
               // ...
@@ -266,8 +274,9 @@ router.post('/api/parse', defineEventHandler(async event => {
                 record.SERIES &&
                 record.IMAGE
               ) {
-                TransferSyntaxUID = record._meta.TransferSyntaxUID;
-                SOPClassUID = record.IMAGE.SOPClassUID;
+                MediaStorageSOPClassUID = record._meta.MediaStorageSOPClassUID?.Value?.[0];
+                MediaStorageSOPInstanceUID = record._meta.MediaStorageSOPInstanceUID?.Value?.[0];
+                TransferSyntaxUID = record._meta.TransferSyntaxUID?.Value?.[0];
 
                 // ...
 
@@ -288,12 +297,18 @@ router.post('/api/parse', defineEventHandler(async event => {
                 StudyID = record.STUDY.StudyID;
                 StudyDate = record.STUDY.StudyDate;
                 StudyTime = record.STUDY.StudyTime;
+                AccessionNumber = record.STUDY.AccessionNumber;
 
                 SeriesInstanceUID = record.SERIES.SeriesInstanceUID;
                 SeriesDescription = record.SERIES.SeriesDescription;
+                Modality = record.SERIES.Modality;
                 SeriesNumber = record.SERIES.SeriesNumber;
 
                 SOPInstanceUID = record.IMAGE.SOPInstanceUID;
+                SOPClassUID = record.IMAGE.SOPClassUID;
+                ReferencedSOPClassUIDInFile = record.IMAGE.ReferencedSOPClassUIDInFile;
+                ReferencedSOPInstanceUIDInFile = record.IMAGE.ReferencedSOPInstanceUIDInFile;
+                ReferencedTransferSyntaxUIDInFile = record.IMAGE.ReferencedTransferSyntaxUIDInFile;
                 InstanceNumber = record.IMAGE.InstanceNumber;
               } else {
                 // stream the file through AsyncDicomReader — no full buffer in memory
@@ -334,8 +349,9 @@ router.post('/api/parse', defineEventHandler(async event => {
                 // TODO: maybe add more filter conditions to filter non-supported dcm files
                 // ...
 
+                MediaStorageSOPClassUID = meta['00020002']?.Value?.[0];
+                MediaStorageSOPInstanceUID = meta['00020003']?.Value?.[0];
                 TransferSyntaxUID = meta['00020010']?.Value?.[0];
-                SOPClassUID = meta['00020002']?.Value?.[0];
 
                 // ...
 
@@ -356,12 +372,18 @@ router.post('/api/parse', defineEventHandler(async event => {
                 StudyID = dict['00200010']?.Value?.[0];
                 StudyDate = dict['00080020']?.Value?.[0];
                 StudyTime = dict['00080030']?.Value?.[0];
+                AccessionNumber = dict['00080050']?.Value?.[0];
 
                 SeriesInstanceUID = dict['0020000E']?.Value?.[0];
                 SeriesDescription = dict['0008103E']?.Value?.[0];
+                Modality = dict['00080060']?.Value?.[0];
                 SeriesNumber = dict['00200011']?.Value?.[0];
 
                 SOPInstanceUID = dict['00080018']?.Value?.[0];
+                SOPClassUID = dict['00080016']?.Value?.[0];
+                ReferencedSOPClassUIDInFile = dict['00041510']?.Value?.[0];
+                ReferencedSOPInstanceUIDInFile = dict['00041511']?.Value?.[0];
+                ReferencedTransferSyntaxUIDInFile = dict['00041512']?.Value?.[0];
                 InstanceNumber = dict['00200013']?.Value?.[0];
               }
 
@@ -374,8 +396,9 @@ router.post('/api/parse', defineEventHandler(async event => {
                 root: rootPath,
 
                 tags: {
+                  MediaStorageSOPClassUID,
+                  MediaStorageSOPInstanceUID,
                   TransferSyntaxUID,
-                  SOPClassUID,
 
                   // ...
 
@@ -387,12 +410,18 @@ router.post('/api/parse', defineEventHandler(async event => {
                   StudyID,
                   StudyDate,
                   StudyTime,
+                  AccessionNumber,
 
                   SeriesInstanceUID,
                   SeriesDescription,
+                  Modality,
                   SeriesNumber,
 
                   SOPInstanceUID,
+                  SOPClassUID,
+                  ReferencedSOPClassUIDInFile,
+                  ReferencedSOPInstanceUIDInFile,
+                  ReferencedTransferSyntaxUIDInFile,
                   InstanceNumber,
                 },
               };
@@ -408,7 +437,7 @@ router.post('/api/parse', defineEventHandler(async event => {
                 '1.2.840.10008.5.1.4.1.1.88.22', // Enhanced SR
                 '1.2.840.10008.5.1.4.1.1.130', // EnhancedPETImage
                 // ...
-              ].includes(payload.tags.SOPClassUID);
+              ].includes(payload.tags.MediaStorageSOPClassUID);
 
               // write cache
               if (useCache && rootPath) {
