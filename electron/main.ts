@@ -246,20 +246,20 @@ app.whenReady().then(() => {
   ipcMain.handle('openWithVolView', (e, filePath: string, fileName?: string, uid?: string) => {
     const isDICOM = fileName?.toLowerCase().endsWith('.dcm') || (fileName && !fileName.includes('.'));
     const isNIFTI = fileName?.toLowerCase().endsWith('.nii') || fileName?.toLowerCase().endsWith('.nii.gz');
-    const url = getVolViewURL()
-      + `?urls=[h3://localhost/file/${encodeURIComponent(filePath)}]`
+    const url = getVolViewURL();
+    const search = `?urls=[h3://localhost/file/${encodeURIComponent(filePath)}]`
       + (fileName ? `&names=[${fileName}]` : '')
       + (uid ? `&uid=${uid}&atob=true` : '')
-      + (isDICOM ? '&changeLayout=auto' : fileName ? `&layoutName=${isNIFTI ? 'Axial Primary' : 'Axial Only'}` : '');
-      + '&roi=true'
+      + (isDICOM ? '&changeLayout=auto' : fileName ? `&layoutName=${isNIFTI ? 'Axial Primary' : 'Axial Only'}` : '')
+      + '&roi=true';
     const win = new BrowserWindow({
       darkTheme: true,
       backgroundColor: '#000000',
       autoHideMenuBar: true,
       width: 1080,
       height: 720,
-      minWidth: 500,
-      minHeight: 500,
+      minWidth: 600,
+      minHeight: 400,
       useContentSize: true,
       webPreferences: {
         preload: path.join(__dirname, 'preload.volview.js'),
@@ -267,11 +267,11 @@ app.whenReady().then(() => {
       },
     });
     if (url.startsWith('http')) {
-      win.loadURL(url);
+      win.loadURL(url + search);
     } else {
-      win.loadFile(url);
+      win.loadFile(url, { search });
     }
-    return url;
+    return url + search;
   });
   ipcMain.on('showContextMenu', (e, ...args) => {
     const { key, val } = args[0];
