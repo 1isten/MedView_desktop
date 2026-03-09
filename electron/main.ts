@@ -185,6 +185,7 @@ if (!gotTheLock) {
 
 const APP_URL = path.join(app.getAppPath(), '.output', 'public', 'index.html');
 const VOLVIEW_URL = path.join(app.getAppPath(), '..', 'volview', 'index.html');
+const getVolViewURL = () => app.isPackaged ? VOLVIEW_URL : VOLVIEW_URL_DEV;
 
 const createWindow = (openFromPath?: string) => {
   if (!gotTheLock) {
@@ -241,7 +242,37 @@ app.whenReady().then(() => {
   protocol.handle('h3', req => handler(req));
 
   // ipcMain.handle('ping', () => 'PONG');
-  ipcMain.handle('getVolViewURL', () => app.isPackaged ? VOLVIEW_URL : VOLVIEW_URL_DEV);
+  ipcMain.handle('getVolViewURL', () => getVolViewURL());
+  ipcMain.handle('openWithVolView', (e, filePath: string, fileName?: string, uid?: string) => {
+    const isDICOM = fileName?.toLowerCase().endsWith('.dcm') || (fileName && !fileName.includes('.'));
+    const isNIFTI = fileName?.toLowerCase().endsWith('.nii') || fileName?.toLowerCase().endsWith('.nii.gz');
+    const url = getVolViewURL()
+      + `?urls=[h3://localhost/file/${encodeURIComponent(filePath)}]`
+      + (fileName ? `&names=[${fileName}]` : '')
+      + (uid ? `&uid=${uid}&atob=true` : '')
+      + (isDICOM ? '&changeLayout=auto' : fileName ? `&layoutName=${isNIFTI ? 'Axial Primary' : 'Axial Only'}` : '');
+      + '&roi=true'
+    const win = new BrowserWindow({
+      darkTheme: true,
+      backgroundColor: '#000000',
+      autoHideMenuBar: true,
+      width: 1080,
+      height: 720,
+      minWidth: 500,
+      minHeight: 500,
+      useContentSize: true,
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.volview.js'),
+        devTools: app.isPackaged ? !!DEBUG : true,
+      },
+    });
+    if (url.startsWith('http')) {
+      win.loadURL(url);
+    } else {
+      win.loadFile(url);
+    }
+    return url;
+  });
   ipcMain.on('showContextMenu', (e, ...args) => {
     const { key, val } = args[0];
     const template: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [];

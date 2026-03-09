@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('$electron', {
   // ping: () => ipcRenderer.invoke('ping'),
 
   getVolViewURL: () => ipcRenderer.invoke('getVolViewURL'),
+  openWithVolView: (filePath: string, fileName?: string, uid?: string) => ipcRenderer.invoke('openWithVolView', filePath, fileName, window.btoa(encodeURIComponent(filePath))),
 
   // ...
 

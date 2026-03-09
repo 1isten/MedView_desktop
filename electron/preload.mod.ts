@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
+// ...
+
 ipcRenderer.on('load-args', async (e, ...args) => {
   window.postMessage({ type: 'load-args', args }, '*', e.ports);
 });
@@ -18,6 +20,7 @@ contextBridge.exposeInMainWorld('$electron', {
   // ...
 
   getVolViewURL: () => ipcRenderer.invoke('getVolViewURL'),
+  openWithVolView: (filePath: string, fileName?: string, uid?: string) => ipcRenderer.invoke('openWithVolView', filePath, fileName, window.btoa(encodeURIComponent(filePath))),
 
   // ...
 

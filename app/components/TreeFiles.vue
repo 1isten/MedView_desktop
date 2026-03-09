@@ -124,6 +124,8 @@ function handleDoubleClickItem(_item, index) {
   console.log(index, _item);
 }
 
+const volviewStore = useVolViewStore();
+
 const appStore = useAppStore();
 const thirdpartyModules = computed(() => appStore.thirdpartyModules);
 const thirdpartyModulesContextMenus = computed(() => {
@@ -198,7 +200,23 @@ const { onContextMenu } = useContextMenu('file-explorer-item', computed(() => [
 
   // ...
 
-  rightClickContext.value?.level === 1 && rightClickContext.value?.isDirectory && {
+  rightClickContext.value?.path && rightClickContext.value.isFile && volviewStore.canOpenWithVolView(rightClickContext.value.name) && {
+    label: 'Open with…',
+    submenu: [
+      {
+        label: 'VolView',
+        click: () => {
+          const filePath = rightClickContext.value.path;
+          const fileName = rightClickContext.value.name;
+          volviewStore.openWithVolView(filePath, fileName).then(volviewURL => {
+            // console.log(volviewURL);
+          });
+        },
+        // enabled: false,
+      },
+    ],
+  },
+  rightClickContext.value?.level === 1 && rightClickContext.value.isDirectory && {
     label: 'Generate DICOMDIR…',
     click: async () => {
       if ('$electron' in window) {

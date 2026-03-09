@@ -14,19 +14,16 @@ import * as esbuild from 'esbuild';
       allowOverwrite: true,
     }),
     // esbuild electron/preload.ts --format=cjs --minify --outdir=electron --allow-overwrite
-    esbuild.build({
-      entryPoints: ['electron/preload.ts'],
+    ...[
+      'electron/preload.ts',
+      'electron/preload.mod.ts',
+      'electron/preload.volview.ts',
+    ].map(entry => esbuild.build({
+      entryPoints: [entry],
       format: 'cjs',
       minify: true,
       outdir: 'electron',
       allowOverwrite: true,
-    }),
-    esbuild.build({
-      entryPoints: ['electron/preload.mod.ts'],
-      format: 'cjs',
-      minify: true,
-      outdir: 'electron',
-      allowOverwrite: true,
-    }),
+    })),
   ]);
 })();
