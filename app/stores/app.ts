@@ -14,9 +14,10 @@ export const useAppStore = defineStore('app', () => {
       // @ts-ignore window.$electron
       const modules = await $electron.getThirdpartyModules();
       if (modules?.length) {
-        thirdpartyModules.value.push(...modules);
+        thirdpartyModules.value = [...modules];
       }
     }
+    return thirdpartyModules.value;
   }
   function openThirdpartyModuleUI(moduleId: string, ...args: any[]) {
     if ('$electron' in window) {

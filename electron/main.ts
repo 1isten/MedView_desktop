@@ -37,7 +37,12 @@ if (fs.existsSync(thirdparty_modules)) {
             const moduleId = `${author}/${mod}`;
             const { setup, api, ...moduleProps } = module;
             if (setup && typeof setup === 'function') {
-              await setup({}, app);
+              await setup({
+                __file__: main,
+                __name__: mod,
+                __author__: author.slice(1),
+                __version__: moduleProps.meta?.version ?? 'N/A',
+              }, app);
             }
             if (api && typeof api === 'object') {
               Object.entries(api).forEach(([api, handler]) => {

@@ -89,13 +89,17 @@
       <v-app-bar-nav-icon v-if="display?.mobile" variant="text" @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
       <v-toolbar-title>{{ appName }}</v-toolbar-title>
       <v-spacer></v-spacer>
-      <v-btn icon variant="plain" v-if="thirdpartyModules.length > 0">
+      <v-btn icon variant="plain" v-if="thirdpartyModules.length > 0" @click="appStore.getThirdpartyModules()">
         <v-icon icon="mdi-puzzle-outline"></v-icon>
         <v-menu activator="parent">
           <v-list density="compact">
-            <v-list-item v-for="module in thirdpartyModules" :key="module.id" @click="handleClickModule(module)">
-              <v-list-item-title>{{ module.meta.name }}</v-list-item-title>
-            </v-list-item>
+            <template v-for="(module, idx) in thirdpartyModules" :key="module.id">
+              <!-- <v-divider v-if="idx > 0"></v-divider> -->
+              <!-- <v-list-subheader>{{ module.id.split('/')[0] }}</v-list-subheader> -->
+              <v-list-item @click="handleClickModule(module)">
+                <v-list-item-title :title="`${module.id} v${module.meta.version}`">{{ module.meta.name }}</v-list-item-title>
+              </v-list-item>
+            </template>
           </v-list>
         </v-menu>
       </v-btn>
