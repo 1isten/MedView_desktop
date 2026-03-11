@@ -226,7 +226,7 @@ export const useParsingStore = defineStore('parsing', () => {
         id: PatientDescription,
         keys: [PatientDescription],
         name: PatientDescription,
-        icon: 'i-lucide-user',
+        icon: 'i-lucide-book-user',
         expanded: patientInfo.expanded,
       };
       patient.index = list.length;
@@ -243,7 +243,7 @@ export const useParsingStore = defineStore('parsing', () => {
             id: StudyInstanceUID,
             keys: [...patient.keys, StudyInstanceUID],
             name: studyInfo.StudyDescription || studyInfo.StudyID || 'Unknown Study',
-            icon: 'i-lucide-book-user',
+            icon: 'i-lucide-stethoscope',
             expanded: studyInfo.expanded,
           };
           study.index = list.length;
@@ -280,7 +280,7 @@ export const useParsingStore = defineStore('parsing', () => {
                     name: instanceInfo.fileName,
                     path: instanceInfo.filePath,
                     n: instanceInfo.InstanceNumber,
-                    icon: 'i-lucide-file-text',
+                    icon: 'i-mdi-file-document-outline',
                   };
                   instance.index = list.length;
                   seriesInfo.instances[instance.id].i = instance.index;

@@ -21,13 +21,13 @@ export const useVolViewStore = defineStore('volview', () => {
     }
     return false;
   }
-  async function openWithVolView(filePath: string, fileName?: string) {
+  async function openWithVolView(filePath: string, fileName?: string, options?: { newWindow?: boolean }) {
     if (fileName && !canOpenWithVolView(fileName)) {
       return;
     }
     if ('$electron' in window) {
       // @ts-ignore window.$electron
-      return $electron.openWithVolView(filePath, fileName);
+      return $electron.openWithVolView(filePath, fileName, options);
     }
   }
 

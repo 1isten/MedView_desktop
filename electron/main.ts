@@ -248,7 +248,7 @@ app.whenReady().then(() => {
 
   // ipcMain.handle('ping', () => 'PONG');
   ipcMain.handle('getVolViewURL', () => getVolViewURL());
-  ipcMain.handle('openWithVolView', (e, filePath: string, fileName?: string, uid?: string) => {
+  ipcMain.handle('openWithVolView', (e, filePath: string, fileName?: string, uid?: string, options?: { newWindow?: boolean }) => {
     const isDICOM = fileName?.toLowerCase().endsWith('.dcm') || (fileName && !fileName.includes('.'));
     const isNIFTI = fileName?.toLowerCase().endsWith('.nii') || fileName?.toLowerCase().endsWith('.nii.gz');
     const url = getVolViewURL();
@@ -257,6 +257,9 @@ app.whenReady().then(() => {
       + (uid ? `&uid=${uid}&atob=true` : '')
       + (isDICOM ? '&changeLayout=auto' : fileName ? `&layoutName=${isNIFTI ? 'Axial Primary' : 'Axial Only'}` : '')
       + '&roi=true';
+    if (options?.newWindow === false) {
+      return url + search + '&uiMode=lite';
+    }
     const win = new BrowserWindow({
       darkTheme: true,
       backgroundColor: '#000000',
@@ -353,7 +356,7 @@ app.whenReady().then(() => {
     return JSON.parse(JSON.stringify(thirdpartyModules));
   });
   ipcMain.handle('getThirdpartyModule', async (e, moduleId: string, ...args) => {
-    return modules[moduleId] ? JSON.parse(JSON.stringify({ moduleId, ...modules[moduleId] })) : null;
+    return modules[moduleId] ? JSON.parse(JSON.stringify({ id: moduleId, ...modules[moduleId] })) : null;
   });
   ipcMain.on('openThirdpartyModuleUI', (e, moduleId: string, ...args) => {
     const module = modules[moduleId];

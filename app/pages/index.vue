@@ -94,10 +94,12 @@
         <v-menu activator="parent">
           <v-list density="compact">
             <template v-for="(module, idx) in thirdpartyModules" :key="module.id">
-              <!-- <v-divider v-if="idx > 0"></v-divider> -->
-              <!-- <v-list-subheader>{{ module.id.split('/')[0] }}</v-list-subheader> -->
+              <v-divider v-if="idx > 0 && module.i === 0"></v-divider>
+              <v-list-subheader v-if="module.i === 0">{{ module.auther }}</v-list-subheader>
               <v-list-item @click="handleClickModule(module)">
-                <v-list-item-title :title="`${module.id} v${module.meta.version}`">{{ module.meta.name }}</v-list-item-title>
+                <v-list-item-title :title="module.mod + (module.meta.version ? ` v${module.meta.version}` : '') + (module.meta.description ? `\r\n${module.meta.description}` : '')">
+                  {{ module.meta.name }}
+                </v-list-item-title>
               </v-list-item>
             </template>
           </v-list>
@@ -387,7 +389,19 @@ async function refreshTree() {
 
 // ...
 
-const thirdpartyModules = computed(() => appStore.thirdpartyModules);
+const thirdpartyModules = computed(() => {
+  const thirdpartyModules = [];
+  const autherCounts = {};
+  appStore.thirdpartyModules.forEach(module => {
+    const [auther, mod] = module.id.split('/');
+    if (!(auther in autherCounts)) {
+      autherCounts[auther] = -1;
+    }
+    autherCounts[auther] += 1;
+    thirdpartyModules.push({ auther, mod, i: autherCounts[auther], ...module });
+  });
+  return thirdpartyModules;
+});
 async function handleClickModule(module) {
   if (module.ui) {
     appStore.openThirdpartyModuleUI(module.id);
